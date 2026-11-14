@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "하고봐",
+    "slug": "hagobwa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "hagobwa",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.hagobwa.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "운동 횟수를 세기 위해 카메라를 사용해요. 영상은 기기 밖으로 나가지 않아요."
+      }
+    },
+    "android": {
+      "package": "com.hagobwa.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E0454A",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "name": "하고봐",
+      "themeColor": "#ECEDE7",
+      "backgroundColor": "#F7F7F3"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#E0454A",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
