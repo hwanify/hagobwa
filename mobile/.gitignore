@@ -41,7 +41,4 @@ example
 # generated native folders
 /ios
 /android
-# Screen Time targets are copied in by react-native-device-activity at prebuild;
-# only our own widget target is committed.
-/targets/*
-!/targets/Widget/
+/targets/

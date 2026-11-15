@@ -3,7 +3,6 @@ import FamilyControls
 import ManagedSettings
 import SwiftUI
 import UserNotifications
-import WidgetKit
 
 // Selections travel as base64 JSON of FamilyActivitySelection, the same format
 // react-native-device-activity stores, so tokens can be passed back to it.
@@ -49,11 +48,6 @@ public class LockedAppsModule: Module {
       UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
         promise.resolve(granted)
       }
-    }
-
-    /// Ask the home screen widget to redraw with the latest balance.
-    Function("reloadWidgets") {
-      WidgetCenter.shared.reloadAllTimelines()
     }
 
     View(LockedAppLabelView.self) {

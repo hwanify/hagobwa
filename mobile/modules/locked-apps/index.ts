@@ -8,7 +8,7 @@ export interface PickedItem {
   token: string;
 }
 
-const native = Platform.OS === 'ios' ? requireOptionalNativeModule<{ split(selection: string): PickedItem[]; requestNotifications(): Promise<boolean>; reloadWidgets(): void }>('LockedApps') : null;
+const native = Platform.OS === 'ios' ? requireOptionalNativeModule<{ split(selection: string): PickedItem[]; requestNotifications(): Promise<boolean> }>('LockedApps') : null;
 
 /** True when this build includes the native module (older builds don't). */
 export const isAvailable = !!native;
@@ -27,15 +27,6 @@ export async function requestNotifications(): Promise<boolean> {
     return (await native?.requestNotifications()) ?? false;
   } catch {
     return false;
-  }
-}
-
-/** Redraw the home screen widget. */
-export function reloadWidgets(): void {
-  try {
-    native?.reloadWidgets();
-  } catch {
-    // Older builds without the function: the widget refreshes on its own schedule.
   }
 }
 

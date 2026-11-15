@@ -88,7 +88,7 @@ async function prepareShieldIcon(): Promise<boolean> {
 }
 
 let shieldReps = -1;
-/** L-4 lock screen: paper background, a big red "0분", and a pointer to the home screen widget. */
+/** L-4 lock screen: paper background and a big red "0분". */
 async function ensureShield(reps10: number) {
   if (shieldReps === reps10) return;
   shieldReps = reps10;
@@ -101,7 +101,7 @@ async function ensureShield(reps10: number) {
       // iOS fills in the app name at display time, so keep it away from Korean particles.
       title: '지금은 잠겨 있어요',
       titleColor: INK,
-      subtitle: `{applicationOrDomainDisplayName} · 푸시업 ${reps10}개면 10분 열려요.\n홈 화면 하고봐 위젯을 눌러 주세요.`,
+      subtitle: `{applicationOrDomainDisplayName} · 푸시업 ${reps10}개면 10분 열려요.\n하고봐에서 운동하고 충전하세요.`,
       subtitleColor: MUTE,
       ...(hasIcon ? { iconAppGroupRelativePath: ICON_FILE } : { iconSystemName: 'lock.fill', iconTint: RED }),
       primaryButtonLabel: '확인',

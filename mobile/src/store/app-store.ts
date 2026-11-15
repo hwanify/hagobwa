@@ -19,7 +19,6 @@ import {
 } from '@/core/timebank';
 import type { VoiceMode } from '@/core/voice';
 import { blocker } from '@/platform/blocker';
-import { updateWidget } from '@/platform/widget';
 
 export interface Settings {
   onboarded: boolean;
@@ -195,13 +194,7 @@ export function useBlockerSync(enabled: boolean): void {
     const sub = RNAppState.addEventListener('change', (st) => {
       if (st === 'active') void useAppStore.getState().syncBlocker({ restart: false });
     });
-    // Keep the home screen widget in step with the balance and today's reps.
-    updateWidget(useAppStore.getState());
-    const unsub = useAppStore.subscribe((st) => updateWidget(st));
-    return () => {
-      sub.remove();
-      unsub();
-    };
+    return () => sub.remove();
   }, [enabled]);
 }
 
