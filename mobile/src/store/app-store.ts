@@ -155,8 +155,7 @@ export const useAppStore = create<AppState>()(
         // Restarting the monitor drops the partial minute in progress, so only restart when the
         // balance changed (charge, emergency, picker) or the usage window is about to end.
         const until = s.blockerUntil ?? -1;
-        // A window ending days away is a leftover week window: replace it with a daily one.
-        const stale = until < 0 || (until > 0 && (now > until - 15 * 60_000 || until - now > 26 * 3600_000));
+        const stale = until < 0 || (until > 0 && now > until - 15 * 60_000);
         if (!restart && !stale) {
           set({ bank, blockerCharged: Math.max(s.blockerCharged, used) });
           return;
