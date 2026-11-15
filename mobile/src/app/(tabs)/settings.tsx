@@ -25,11 +25,7 @@ export default function Settings() {
   const s = useAppStore();
   const [note, setNote] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const [pickerKey, setPickerKey] = useState(0);
-  const picker = useLockPicker(() => {
-    setPickerKey((k) => k + 1);
-    void s.syncBlocker();
-  });
+  const picker = useLockPicker();
 
   const toggleApp = (id: AppId) => {
     setNote('');
@@ -80,10 +76,13 @@ export default function Settings() {
       <H2 style={styles.section}>잠글 앱</H2>
       {blocker.kind === 'ios-screentime' ? (
         <View>
-          <LockedAppList open={s.bank.balanceSec >= 60} refreshKey={pickerKey + picker.count} />
-          <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow}>
+          <Muted style={{ marginBottom: 4 }}>편집을 누르면 지금 잠근 앱이 체크된 채로 열려요. 추가하거나 빼고 완료를 누르세요.</Muted>
+          <LockedAppList />
+          <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow} disabled={picker.saving}>
             <T>{picker.count > 0 ? `${picker.count}개 잠그는 중` : '아직 고르지 않았어요'}</T>
-            <T style={{ fontWeight: '700', color: colors.red }}>{picker.count > 0 ? '추가·변경' : '고르기'}</T>
+            <T style={{ fontWeight: '700', color: picker.saving ? colors.mute : colors.red }}>
+              {picker.saving ? '저장 중…' : picker.count > 0 ? '편집' : '고르기'}
+            </T>
           </Pressable>
         </View>
       ) : LOCKABLE_APPS.map((a, i) => {
