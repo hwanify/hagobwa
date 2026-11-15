@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { activitySelectionMetadata, DeviceActivitySelectionSheetViewPersisted, getFamilyActivitySelectionId } from 'react-native-device-activity';
 
@@ -33,16 +33,37 @@ export function useLockPicker(onPicked?: (count: number) => void) {
 
   const close = useCallback(() => {
     setVisible(false);
-    const n = pickedCount();
-    setCount(n);
-    onPicked?.(n);
+    // The native side may save the selection just after dismissing; read it again shortly.
+    const read = () => {
+      const n = pickedCount();
+      if (n > 0) setCount(n);
+      return n;
+    };
+    read();
+    setTimeout(() => {
+      read();
+      onPicked?.(pickedCount());
+    }, 500);
   }, [onPicked]);
+
+  // Re-read when a screen mounts again (another screen may have changed the selection).
+  useEffect(() => {
+    const id = setInterval(() => {
+      const n = pickedCount();
+      if (n > 0) setCount((c) => (c === n ? c : n));
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
 
   const element = visible ? (
     <DeviceActivitySelectionSheetViewPersisted
       style={styles.anchor}
       familyActivitySelectionId={SELECTION_ID}
-      onSelectionChange={() => setCount(pickedCount())}
+      onSelectionChange={(e) => {
+        const m = e.nativeEvent;
+        const n = (m.applicationCount ?? 0) + (m.categoryCount ?? 0) + (m.webDomainCount ?? 0);
+        setCount(Math.max(n, pickedCount()));
+      }}
       onDismissRequest={close}
     />
   ) : null;

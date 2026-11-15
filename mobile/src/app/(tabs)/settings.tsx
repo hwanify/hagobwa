@@ -106,6 +106,9 @@ export default function Settings() {
           disabled={s.bank.balanceSec <= 0}
           onPress={s.clearBalance}
         />
+        {blocker.kind === 'ios-screentime' && (
+          <Muted style={{ fontSize: 11, textAlign: 'center' }}>{blocker.diagnose()}</Muted>
+        )}
         {confirmReset ? (
           <>
             <T style={{ color: colors.red, fontWeight: '700' }}>잔고, 운동 기록, 설정이 모두 지워져요.</T>

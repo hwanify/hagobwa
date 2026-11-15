@@ -31,12 +31,17 @@ export interface AppBlocker {
   usedSecondsSince(since: number): number;
   /** Shield or unshield to match the balance. */
   apply(balanceSec: number): Promise<void>;
+  /** One-line status for bug reports (empty when simulated). */
+  diagnose(): string;
 }
 
 /** familyActivitySelectionId shared with the picker views. */
 export const SELECTION_ID = 'hagobwa.locked';
 const ACTIVITY = 'hagobwa.usage';
-const EVENT_PREFIX = 'used_';
+/** No underscores: the library splits stored event keys on '_'. */
+const EVENT_PREFIX = 'm';
+/** iOS sometimes fires usage events right after monitoring starts; ignore anything that early. */
+const EARLY_MS = 30_000;
 
 const simulated: AppBlocker = {
   kind: 'simulated',
@@ -50,6 +55,7 @@ const simulated: AppBlocker = {
   hasSelection: () => true,
   usedSecondsSince: () => 0,
   async apply() {},
+  diagnose: () => '',
 };
 
 const RED = { red: 224, green: 69, blue: 74 };
@@ -83,6 +89,7 @@ function ensureShield() {
 
 const screenTime: AppBlocker = {
   kind: 'ios-screentime',
+  diagnose: () => '',
   description: '스크린타임으로 고른 앱을 잠가요. 충전한 시간만큼 열리고, 다 쓰면 하고봐를 닫아 둬도 다시 잠겨요.',
 
   async requestAuthorization() {
@@ -106,8 +113,10 @@ const screenTime: AppBlocker = {
     let maxMin = 0;
     for (const e of ScreenTime.getEvents(ACTIVITY)) {
       if (e.callbackName !== 'eventDidReachThreshold' || !e.eventName?.startsWith(EVENT_PREFIX)) continue;
-      if (new Date(e.lastCalledAt).getTime() < since) continue;
-      maxMin = Math.max(maxMin, Number(e.eventName.slice(EVENT_PREFIX.length)) || 0);
+      const min = Number(e.eventName.slice(EVENT_PREFIX.length)) || 0;
+      // N minutes of use can't be reached sooner than N minutes after the monitor started.
+      if (new Date(e.lastCalledAt).getTime() < since + min * 60_000 - EARLY_MS) continue;
+      maxMin = Math.max(maxMin, min);
     }
     return maxMin * 60;
   },
@@ -125,20 +134,37 @@ const screenTime: AppBlocker = {
       return;
     }
 
+    const now = Date.now();
     const last = marks[marks.length - 1];
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
     ScreenTime.configureActions({
       activityName: ACTIVITY,
       callbackName: 'eventDidReachThreshold',
       eventName: `${EVENT_PREFIX}${last}`,
-      actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID }],
+      actions: [
+        {
+          type: 'blockSelection',
+          familyActivitySelectionId: SELECTION_ID,
+          neverTriggerBefore: new Date(now + last * 60_000 - EARLY_MS),
+        },
+      ],
     });
+    // stopMonitoring() above also reports intervalDidEnd, so only honour the real one at midnight.
     ScreenTime.configureActions({
       activityName: ACTIVITY,
       callbackName: 'intervalDidEnd',
-      actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID }],
+      actions: [
+        {
+          type: 'blockSelection',
+          familyActivitySelectionId: SELECTION_ID,
+          neverTriggerBefore: new Date(midnight.getTime() - 120_000),
+        },
+      ],
     });
 
-    ScreenTime.unblockSelection(selection(), 'hagobwa:charged');
+    // We only ever shield this one selection, so clearing every block is the reliable unlock.
+    ScreenTime.resetBlocks('hagobwa:charged');
     await ScreenTime.startMonitoring(
       ACTIVITY,
       { intervalStart: { hour: 0, minute: 0, second: 0 }, intervalEnd: { hour: 23, minute: 59, second: 59 }, repeats: true },
@@ -150,6 +176,24 @@ const screenTime: AppBlocker = {
       })),
     );
   },
+};
+
+function safe<T>(f: () => T, fallback: T): T {
+  try {
+    return f();
+  } catch {
+    return fallback;
+  }
+}
+
+screenTime.diagnose = () => {
+  const auth = safe(() => ScreenTime.getAuthorizationStatus(), -1);
+  const token = safe(() => ScreenTime.getFamilyActivitySelectionId(SELECTION_ID), undefined);
+  const meta = token ? safe(() => ScreenTime.activitySelectionMetadata({ activitySelectionToken: token }), undefined) : undefined;
+  const picked = meta ? `${meta.applicationCount}/${meta.categoryCount}/${meta.webDomainCount}` : token ? '?' : '없음';
+  const shield = safe(() => (ScreenTime.isShieldActive() ? '켜짐' : '꺼짐'), '?');
+  const monitors = safe(() => ScreenTime.getActivities().length, -1);
+  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}`;
 };
 
 function pick(): AppBlocker {
