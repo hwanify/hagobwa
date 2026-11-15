@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { AppId } from '@/core/apps';
-import type { Difficulty, ExerciseId } from '@/core/rates';
+import { repsNeeded, type Difficulty, type ExerciseId } from '@/core/rates';
 import {
   applyEmergency,
   capFor,
@@ -19,6 +19,7 @@ import {
 } from '@/core/timebank';
 import type { VoiceMode } from '@/core/voice';
 import { blocker } from '@/platform/blocker';
+import { updateWidget } from '@/platform/widget';
 
 export interface Settings {
   onboarded: boolean;
@@ -161,7 +162,7 @@ export const useAppStore = create<AppState>()(
         }
         set({ bank, blockerSince: now, blockerCharged: 0 });
         try {
-          await blocker.apply(get().onboarded ? bank.balanceSec : 0);
+          await blocker.apply(get().onboarded ? bank.balanceSec : 0, repsNeeded(600, 'pushup', get().difficulty));
         } catch {
           // Screen Time refused (e.g. permission revoked): keep the in-app balance as is.
         }
@@ -194,7 +195,13 @@ export function useBlockerSync(enabled: boolean): void {
     const sub = RNAppState.addEventListener('change', (st) => {
       if (st === 'active') void useAppStore.getState().syncBlocker({ restart: false });
     });
-    return () => sub.remove();
+    // Keep the home screen widget in step with the balance and today's reps.
+    updateWidget(useAppStore.getState());
+    const unsub = useAppStore.subscribe((st) => updateWidget(st));
+    return () => {
+      sub.remove();
+      unsub();
+    };
   }, [enabled]);
 }
 
