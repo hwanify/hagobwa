@@ -1,0 +1,60 @@
+# Import an app icon image by URL and regenerate every icon asset the app uses.
+# Commits the result to the branch it runs on. Run the iOS release afterwards to ship it.
+name: 앱 아이콘 가져오기
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '정사각형 아이콘 이미지 URL (PNG/JPG, 1024px 이상 권장)'
+        required: true
+      brand_color:
+        description: '아이콘 배경색 (모서리 채우기, 안드로이드 배경)'
+        default: '#E0454A'
+
+permissions:
+  contents: write
+
+jobs:
+  icon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mobile/assets/images
+    env:
+      SRC_URL: ${{ inputs.url }}
+      BRAND: ${{ inputs.brand_color }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download
+        run: curl -fsSL "$SRC_URL" -o "$RUNNER_TEMP/src.png" && identify "$RUNNER_TEMP/src.png"
+
+      - name: Generate icon set
+        run: |
+          S="$RUNNER_TEMP/src.png"
+          SQ="$RUNNER_TEMP/square.png"
+          # Square, opaque, brand-colored corners (iOS applies its own rounding; no transparency allowed).
+          convert "$S" -resize 1024x1024^ -gravity center -extent 1024x1024 \
+            -fuzz 25% -fill "$BRAND" \
+            -draw "color 2,2 floodfill" -draw "color 1021,2 floodfill" \
+            -draw "color 2,1021 floodfill" -draw "color 1021,1021 floodfill" \
+            -alpha remove -alpha off "$SQ"
+          cp "$SQ" icon.png
+          # Figure only (brand color keyed out) for Android adaptive/monochrome and the splash screen.
+          convert "$SQ" -fuzz 30% -transparent "$BRAND" -trim +repage "$RUNNER_TEMP/figure.png"
+          convert -size 1024x1024 xc:none \( "$RUNNER_TEMP/figure.png" -resize 600x600 \) -gravity center -composite android-icon-foreground.png
+          convert android-icon-foreground.png -channel RGB -evaluate set 0 +channel android-icon-monochrome.png
+          convert -size 1024x1024 xc:none \( "$RUNNER_TEMP/figure.png" -resize 760x760 \) -gravity center -composite splash-icon.png
+          convert "$SQ" -resize 196x196 favicon.png
+          identify icon.png android-icon-foreground.png android-icon-monochrome.png splash-icon.png favicon.png
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Update app icon from imported image"
+          git push
