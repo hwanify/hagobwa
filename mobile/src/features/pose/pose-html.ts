@@ -30,7 +30,9 @@ export const POSE_HTML = `<!doctype html>
   const v = document.getElementById('v');
   const c = document.getElementById('c');
   const ctx = c.getContext('2d');
-  let stream = null, landmarker = null, raf = 0, lastVideoTime = -1, lastPost = 0, running = false;
+  let stream = null, landmarker = null, raf = 0, lastVideoTime = -1, lastDetect = 0, running = false;
+  // ~18 detections per second is plenty for a 1-2 s rep and saves battery and heat.
+  const DETECT_MS = 55;
 
   async function loadModel() {
     if (landmarker) return landmarker;
@@ -65,12 +67,12 @@ export const POSE_HTML = `<!doctype html>
     if (!running) return;
     raf = requestAnimationFrame(loop);
     if (v.readyState < 2 || v.currentTime === lastVideoTime) return;
-    lastVideoTime = v.currentTime;
     const now = performance.now();
+    if (now - lastDetect < DETECT_MS) return;
+    lastDetect = now;
+    lastVideoTime = v.currentTime;
     const lm = landmarker.detectForVideo(v, now).landmarks[0];
     draw(lm);
-    if (now - lastPost < 45) return;
-    lastPost = now;
     post({ t: 'lm', ts: now, lm: lm ? lm.map((p) => [+p.x.toFixed(4), +p.y.toFixed(4), +((p.visibility || 0).toFixed(3))]) : null });
   }
 

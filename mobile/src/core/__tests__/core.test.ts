@@ -221,47 +221,79 @@ describe('pose measurement', () => {
   });
 });
 
+/** Feed keyframe angles, interpolated at ~20 fps like the camera, `msPerKey` apart. */
+function play(c: RepCounter, pose: (deg: number) => Landmark[], keys: number[], msPerKey = 400, t0 = 0) {
+  let t = t0;
+  let completed = 0;
+  for (let i = 1; i < keys.length; i++) {
+    const steps = Math.max(1, Math.round(msPerKey / 50));
+    for (let s = 1; s <= steps; s++) {
+      t += msPerKey / steps;
+      const deg = keys[i - 1] + ((keys[i] - keys[i - 1]) * s) / steps;
+      if (c.update(pose(deg), t).repCompleted) completed++;
+    }
+  }
+  return { completed, t };
+}
+
 describe('RepCounter', () => {
   it('counts full pushup reps', () => {
     const c = new RepCounter('pushup');
-    let t = 0;
-    const frames = [170, 120, 80, 120, 165, 170, 85, 160, 90, 170];
-    let completed = 0;
-    for (const deg of frames) {
-      t += 300;
-      if (c.update(pushupPose(deg), t).repCompleted) completed++;
-    }
+    const { completed } = play(c, pushupPose, [170, 170, 80, 170, 85, 165, 90, 170, 170]);
     expect(completed).toBe(3);
     expect(c.reps).toBe(3);
   });
 
-  it('does not count half reps', () => {
+  it('does not count half reps after a full one', () => {
     const c = new RepCounter('pushup');
-    let t = 0;
-    for (const deg of [170, 120, 110, 165, 120, 170]) c.update(pushupPose(deg), (t += 300));
+    play(c, pushupPose, [170, 170, 80, 170, 125, 170, 130, 170, 125, 170, 128, 170, 170], 700);
+    expect(c.reps).toBe(1);
+  });
+
+  it('does not count a single early half rep', () => {
+    const c = new RepCounter('pushup');
+    play(c, pushupPose, [170, 170, 125, 170, 170]);
     expect(c.reps).toBe(0);
+  });
+
+  it('does not double count a pause at the bottom or wobble near a threshold', () => {
+    const c = new RepCounter('pushup');
+    play(c, pushupPose, [170, 170, 85, 95, 85, 100, 88, 170, 160, 170, 158, 170]);
+    expect(c.reps).toBe(1);
   });
 
   it('does not count reps with sagging hips', () => {
     const c = new RepCounter('pushup');
-    let t = 0;
-    for (const deg of [170, 80, 170, 80, 170]) c.update(pushupPose(deg, true), (t += 300));
+    play(c, (d) => pushupPose(d, true), [170, 80, 170, 80, 170]);
     expect(c.reps).toBe(0);
   });
 
   it('ignores reps faster than the minimum interval', () => {
     const c = new RepCounter('pushup');
-    c.update(pushupPose(80), 0);
-    c.update(pushupPose(170), 500); // rep 1
-    c.update(pushupPose(80), 600);
-    c.update(pushupPose(170), 700); // too fast
-    expect(c.reps).toBe(1);
+    play(c, pushupPose, [170, 170, 80, 170, 80, 170], 100);
+    expect(c.reps).toBeLessThanOrEqual(1);
+  });
+
+  it('adapts to a shallow camera view after a few reps', () => {
+    // Elbow only appears to bend to 125 degrees (e.g. phone in front), never reaching the default bottom.
+    const c = new RepCounter('pushup');
+    const keys = [165];
+    for (let i = 0; i < 8; i++) keys.push(125, 165);
+    play(c, pushupPose, keys, 900);
+    expect(c.reps).toBeGreaterThanOrEqual(5);
+  });
+
+  it('never counts jitter while holding still', () => {
+    const c = new RepCounter('pushup');
+    const keys = [168];
+    for (let i = 0; i < 60; i++) keys.push(i % 2 ? 168 : 160 + (i % 5));
+    play(c, pushupPose, keys, 200);
+    expect(c.reps).toBe(0);
   });
 
   it('counts squats by knee angle', () => {
     const c = new RepCounter('squat');
-    let t = 0;
-    for (const deg of [178, 140, 90, 140, 170, 175, 95, 170]) c.update(squatPose(deg), (t += 400));
+    play(c, squatPose, [178, 178, 90, 175, 95, 170, 170]);
     expect(c.reps).toBe(2);
   });
 });

@@ -82,12 +82,15 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
       let raf = 0;
       let lastVideoTime = -1;
       let lastUi = 0;
+      let lastDetect = 0;
 
       const loop = () => {
         raf = requestAnimationFrame(loop);
         if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
-        lastVideoTime = video.currentTime;
         const now = performance.now();
+        if (now - lastDetect < 55) return; // ~18 fps is plenty and keeps it light
+        lastDetect = now;
+        lastVideoTime = video.currentTime;
         const lm = landmarker.detectForVideo(video, now).landmarks[0];
         if (ctx) draw(ctx, canvas, video, lm);
         const u = counterRef.current.update(lm, now);
