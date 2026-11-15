@@ -21,6 +21,17 @@ const SAMPLE_LINE = {
   mom: '하나. 둘. 그거 하고 폰 보는 거야, 알지? 셋.',
 } as const;
 
+/** Test builds: how the current usage window is doing (start, end, minutes iOS reported). */
+function usageDiag(since: number, until: number, charged: number): string {
+  const t = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const used = since > 0 ? Math.round(blocker.usedSecondsSince(since) / 60) : 0;
+  const end = until > 0 ? t(until) : until === 0 ? '없음' : '모름';
+  return `창 ${since > 0 ? t(since) : '-'} → ${end} · iOS 보고 ${used}분 · 차감 ${Math.round(charged / 60)}분 · 이벤트 ${blocker.eventCount()}개`;
+}
+
 export default function Settings() {
   const s = useAppStore();
   const [note, setNote] = useState('');
@@ -114,7 +125,11 @@ export default function Settings() {
           onPress={s.clearBalance}
         />
         {blocker.kind === 'ios-screentime' && (
-          <Muted style={{ fontSize: 11, textAlign: 'center' }}>{blocker.diagnose()}</Muted>
+          <Muted style={{ fontSize: 11, textAlign: 'center' }}>
+            {blocker.diagnose()}
+            {'\n'}
+            {usageDiag(s.blockerSince, s.blockerUntil, s.blockerCharged)}
+          </Muted>
         )}
         {confirmReset ? (
           <>

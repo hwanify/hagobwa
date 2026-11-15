@@ -39,6 +39,8 @@ export interface AppBlocker {
   apply(balanceSec: number, reps10?: number): Promise<number>;
   /** One-line status for bug reports (empty when simulated). */
   diagnose(): string;
+  /** Usage events iOS has reported for the current window (diagnostics). */
+  eventCount(): number;
 }
 
 /** familyActivitySelectionId shared with the picker views. */
@@ -97,6 +99,7 @@ const simulated: AppBlocker = {
     return 0;
   },
   diagnose: () => '',
+  eventCount: () => 0,
 };
 
 // 하고봐 palette (src/theme): paper background, ink text, red accent.
@@ -153,6 +156,13 @@ async function ensureShield(reps10: number) {
 const screenTime: AppBlocker = {
   kind: 'ios-screentime',
   diagnose: () => '',
+  eventCount(): number {
+    try {
+      return ScreenTime.getEvents(ACTIVITY).filter((e) => e.callbackName === 'eventDidReachThreshold').length;
+    } catch {
+      return -1;
+    }
+  },
   description: '스크린타임으로 고른 앱을 잠가요. 충전한 시간만큼 열리고, 다 쓰면 하고봐를 닫아 둬도 다시 잠겨요.',
 
   async requestAuthorization() {
