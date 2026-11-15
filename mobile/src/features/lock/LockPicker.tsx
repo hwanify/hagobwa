@@ -7,8 +7,9 @@ import { blocker, SELECTION_ID } from '@/platform/blocker';
 /** How many apps / categories / sites the user picked in Apple's Screen Time picker. */
 function pickedCount(): number {
   if (blocker.kind !== 'ios-screentime') return 0;
-  const total = (m?: { applicationCount: number; categoryCount: number; webDomainCount: number }) =>
-    m ? m.applicationCount + m.categoryCount + m.webDomainCount : 0;
+  // Fields can be missing (webDomainCount comes back undefined), so never let NaN through.
+  const total = (m?: { applicationCount?: number; categoryCount?: number; webDomainCount?: number }) =>
+    m ? (m.applicationCount ?? 0) + (m.categoryCount ?? 0) + (m.webDomainCount ?? 0) : 0;
   try {
     // Let the native side look the selection up by id first; fall back to the stored token.
     const byId = total(activitySelectionMetadata({ activitySelectionId: SELECTION_ID }));

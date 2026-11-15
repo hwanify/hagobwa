@@ -107,7 +107,7 @@ const screenTime: AppBlocker = {
     const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
     if (!token) return false;
     const meta = ScreenTime.activitySelectionMetadata({ activitySelectionToken: token });
-    return !!meta && meta.applicationCount + meta.categoryCount + meta.webDomainCount > 0;
+    return !!meta && (meta.applicationCount ?? 0) + (meta.categoryCount ?? 0) + (meta.webDomainCount ?? 0) > 0;
   },
 
   usedSecondsSince(since) {
