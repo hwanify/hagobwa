@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Chip, Mono, Muted, ProgressBar, Row, Screen, Segmented, T } from '@/components/ui';
+import { Button, Chip, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
 import { repLine, VOICE_MODES } from '@/core/voice';
@@ -13,10 +13,8 @@ import { say, tapFeedback } from '@/platform/feedback';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
-const TARGETS = [5, 10, 20, 30];
-
 export default function Workout() {
-  const params = useLocalSearchParams<{ target?: string; back?: string; first?: string }>();
+  const params = useLocalSearchParams<{ back?: string; first?: string }>();
   const first = params.first === '1';
   const back = params.back ?? '';
 
@@ -27,16 +25,12 @@ export default function Workout() {
   const logWorkout = useAppStore((s) => s.logWorkout);
 
   const [exercise, setExercise] = useState<ExerciseId>('pushup');
-  const [target, setTarget] = useState(() => {
-    const n = Number(params.target);
-    return Number.isFinite(n) && n > 0 ? n : 10;
-  });
   const [count, setCount] = useState(0);
   const [pulse, setPulse] = useState(0);
 
   const countRef = useRef(0);
-  const live = useRef({ voice, sound, target });
-  live.current = { voice, sound, target };
+  const live = useRef({ voice, sound });
+  live.current = { voice, sound };
   const finishedRef = useRef(false);
 
   const addRep = useCallback(() => {
@@ -46,7 +40,7 @@ export default function Workout() {
     setCount(n);
     setPulse((p) => p + 1);
     tapFeedback();
-    if (live.current.sound) say(repLine(live.current.voice, n, live.current.target));
+    if (live.current.sound) say(repLine(live.current.voice, n, 0));
   }, []);
 
   const finish = useCallback(() => {
@@ -60,12 +54,6 @@ export default function Workout() {
       params: { id: saved.id, fresh: '1', added: String(saved.earnedSec), back, first: first ? '1' : '' },
     });
   }, [back, exercise, first, logWorkout]);
-
-  useEffect(() => {
-    if (count <= 0 || count < target) return;
-    const id = setTimeout(finish, 1100);
-    return () => clearTimeout(id);
-  }, [count, target, finish]);
 
   const reset = () => {
     countRef.current = 0;
@@ -117,7 +105,7 @@ export default function Workout() {
       </Row>
 
       {first && (
-        <T style={styles.firstNote}>첫 충전이에요. {target}개만 하면 바로 시간이 생겨요.</T>
+        <T style={styles.firstNote}>첫 충전이에요. 하고 싶은 만큼 하고 충전하기를 누르세요.</T>
       )}
 
       <View style={{ marginTop: 14 }}>
@@ -127,30 +115,18 @@ export default function Workout() {
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 }}>
         <Mono key={pulse} style={{ fontSize: 64, lineHeight: 70, letterSpacing: -2 }}>
           {count}
-          <Mono style={{ fontSize: 24, color: colors.mute }}>/{target}</Mono>
+          <T style={{ fontSize: 22, fontWeight: '700', color: colors.mute }}>회</T>
         </Mono>
         <View style={{ alignItems: 'flex-end', paddingBottom: 6 }}>
           <Muted style={{ fontSize: 13 }}>충전 예정</Muted>
           <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
         </View>
       </Row>
-      <View style={{ marginTop: 10 }}>
-        <ProgressBar ratio={count / target} />
-      </View>
-
       <Row style={styles.optionRow}>
         <Muted style={styles.optionLabel}>구령</Muted>
         <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {VOICE_MODES.map((v) => (
             <Chip key={v.id} label={v.label} active={voice === v.id} onPress={() => update({ voice: v.id })} />
-          ))}
-        </Row>
-      </Row>
-      <Row style={styles.optionRow}>
-        <Muted style={styles.optionLabel}>목표</Muted>
-        <Row style={{ gap: 4 }}>
-          {TARGETS.map((t) => (
-            <Chip key={t} tone="ink" label={`${t}회`} active={target === t} onPress={() => setTarget(t)} />
           ))}
         </Row>
       </Row>

@@ -50,7 +50,7 @@ export default function Blocked() {
             variant="ink"
             label="운동하고 보기"
             icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />}
-            onPress={() => router.replace({ pathname: '/workout', params: { target: String(reps), back: target.id } })}
+            onPress={() => router.replace({ pathname: '/workout', params: { back: target.id } })}
           />
           <Pressable
             accessibilityRole="button"

@@ -1,20 +1,18 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, router } from 'expo-router';
 import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BarbellIcon, TabIcon, type TabIconName } from '@/components/tab-icons';
 import { T } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import { colors, MAX_WIDTH } from '@/theme';
 
-type IconName = keyof typeof Ionicons.glyphMap;
-
-const ITEMS: { name: string; label: string; icon: IconName; iconOn: IconName }[] = [
-  { name: 'index', label: '홈', icon: 'home-outline', iconOn: 'home' },
-  { name: 'crew', label: '크루', icon: 'people-outline', iconOn: 'people' },
-  { name: 'stats', label: '기록', icon: 'calendar-outline', iconOn: 'calendar' },
-  { name: 'settings', label: '설정', icon: 'settings-outline', iconOn: 'settings' },
+const ITEMS: { name: string; label: string; icon: TabIconName }[] = [
+  { name: 'index', label: '홈', icon: 'home' },
+  { name: 'crew', label: '크루', icon: 'crew' },
+  { name: 'stats', label: '기록', icon: 'records' },
+  { name: 'settings', label: '설정', icon: 'settings' },
 ];
 
 function TabBar({ state, navigateToTab }: BottomTabBarProps) {
@@ -32,7 +30,7 @@ function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         onPress={() => route && navigateToTab(route.key)}
         style={styles.item}
       >
-        <Ionicons name={active ? item.iconOn : item.icon} size={24} color={active ? colors.red : colors.mute} />
+        <TabIcon name={item.icon} active={active} color={active ? colors.red : colors.mute} />
         <T style={[styles.label, { color: active ? colors.red : colors.mute }]}>{item.label}</T>
       </Pressable>
     );
@@ -48,7 +46,7 @@ function TabBar({ state, navigateToTab }: BottomTabBarProps) {
           onPress={() => router.push('/workout')}
           style={({ pressed }) => [styles.center, pressed && { transform: [{ scale: 0.95 }] }]}
         >
-          <Ionicons name="barbell" size={26} color={colors.white} />
+          <BarbellIcon color={colors.white} />
         </Pressable>
         {tab(ITEMS[2])}
         {tab(ITEMS[3])}

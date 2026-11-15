@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppTile, Button, Card, Divider, Mono, Muted, Ring, Row, Screen, T } from '@/components/ui';
 import { openCharge } from '@/navigation';
+import { BarbellIcon } from '@/components/tab-icons';
 import { appById, type AppId } from '@/core/apps';
 import { formatDuration, minutesOf } from '@/core/format';
 import { EXERCISE_LABEL } from '@/core/rates';
@@ -68,7 +69,7 @@ export default function Home() {
       <Button
         style={{ marginTop: 12 }}
         label="운동하고 충전하기"
-        icon={<Ionicons name="barbell" size={20} color={colors.white} />}
+        icon={<BarbellIcon color={colors.white} size={20} />}
         onPress={() => router.push('/workout')}
       />
 

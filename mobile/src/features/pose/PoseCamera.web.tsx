@@ -154,28 +154,33 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
   );
 }
 
+/** Minimal stick figure: just enough to see that a person is detected. */
 function draw(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, video: HTMLVideoElement, lm?: Landmark[]) {
   if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
   if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!lm) return;
-  const v = (i: number) => lm[i]?.visibility ?? 0;
-  ctx.lineWidth = 5;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = colors.red;
-  for (const [a, b] of LINKS) {
-    if (v(a) < 0.4 || v(b) < 0.4) continue;
+  const W = canvas.width;
+  const H = canvas.height;
+  const ok = (i: number) => (lm[i]?.visibility ?? 0) >= 0.4;
+  const P = (i: number): [number, number] => [lm[i].x * W, lm[i].y * H];
+  const line = (p: [number, number], q: [number, number]) => {
     ctx.beginPath();
-    ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
-    ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
+    ctx.moveTo(p[0], p[1]);
+    ctx.lineTo(q[0], q[1]);
     ctx.stroke();
-  }
-  ctx.fillStyle = colors.paper;
-  for (let i = 11; i <= 28; i++) {
-    if (v(i) < 0.4) continue;
+  };
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(224,69,74,0.9)';
+  for (const [a, b] of LINKS) if (ok(a) && ok(b)) line(P(a), P(b));
+  if (ok(0) && ok(11) && ok(12)) {
+    const r = Math.hypot((lm[11].x - lm[12].x) * W, (lm[11].y - lm[12].y) * H) * 0.3;
     ctx.beginPath();
-    ctx.arc(lm[i].x * canvas.width, lm[i].y * canvas.height, 5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(lm[0].x * W, lm[0].y * H, Math.max(10, r), 0, Math.PI * 2);
+    ctx.stroke();
+    line([((lm[11].x + lm[12].x) / 2) * W, ((lm[11].y + lm[12].y) / 2) * H], P(0));
   }
 }
 

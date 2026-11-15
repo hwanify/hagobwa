@@ -41,7 +41,7 @@ export default function Onboarding() {
       return;
     }
     complete({ goalHours: goal, lockedApps: apps });
-    router.replace({ pathname: '/workout', params: { target: '5', first: '1' } });
+    router.replace({ pathname: '/workout', params: { first: '1' } });
   };
 
   const footer =

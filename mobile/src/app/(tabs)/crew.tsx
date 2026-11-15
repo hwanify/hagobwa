@@ -37,7 +37,7 @@ export default function Crew() {
           );
         })}
       </View>
-      <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/workout', params: { target: '20' } })} style={styles.cta}>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/workout')} style={styles.cta}>
         <T style={{ fontWeight: '700' }}>순위 올리러 가기</T>
         <Ionicons name="chevron-forward" size={18} color={colors.ink} />
       </Pressable>

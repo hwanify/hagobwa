@@ -42,24 +42,22 @@ export const POSE_HTML = `<!doctype html>
     return landmarker;
   }
 
+  // Minimal stick figure: just enough to see that a person is detected.
   function draw(lm) {
     if (c.width !== v.videoWidth) c.width = v.videoWidth;
     if (c.height !== v.videoHeight) c.height = v.videoHeight;
     ctx.clearRect(0, 0, c.width, c.height);
     if (!lm) return;
-    const vis = (i) => (lm[i] && lm[i].visibility) || 0;
-    ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.strokeStyle = '#E0454A';
-    for (const [a, b] of LINKS) {
-      if (vis(a) < 0.4 || vis(b) < 0.4) continue;
-      ctx.beginPath();
-      ctx.moveTo(lm[a].x * c.width, lm[a].y * c.height);
-      ctx.lineTo(lm[b].x * c.width, lm[b].y * c.height);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#F7F7F3';
-    for (let i = 11; i <= 28; i++) {
-      if (vis(i) < 0.4) continue;
-      ctx.beginPath(); ctx.arc(lm[i].x * c.width, lm[i].y * c.height, 6, 0, Math.PI * 2); ctx.fill();
+    const ok = (i) => ((lm[i] && lm[i].visibility) || 0) >= 0.4;
+    const P = (i) => [lm[i].x * c.width, lm[i].y * c.height];
+    const mid = (a, b) => [(lm[a].x + lm[b].x) / 2 * c.width, (lm[a].y + lm[b].y) / 2 * c.height];
+    const line = (p, q) => { ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); };
+    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(224,69,74,0.9)';
+    for (const [a, b] of LINKS) if (ok(a) && ok(b)) line(P(a), P(b));
+    if (ok(0) && ok(11) && ok(12)) {
+      const r = Math.hypot((lm[11].x - lm[12].x) * c.width, (lm[11].y - lm[12].y) * c.height) * 0.3;
+      ctx.beginPath(); ctx.arc(lm[0].x * c.width, lm[0].y * c.height, Math.max(10, r), 0, Math.PI * 2); ctx.stroke();
+      line(mid(11, 12), P(0));
     }
   }
 
