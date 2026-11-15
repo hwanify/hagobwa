@@ -32,18 +32,14 @@ export function useLockPicker(onPicked?: (count: number) => void) {
   }, []);
 
   const close = useCallback(() => {
-    setVisible(false);
-    // The native side may save the selection just after dismissing; read it again shortly.
-    const read = () => {
+    // Keep the (invisible) native view mounted for a moment: it saves the selection on a short
+    // debounce after Apple's sheet closes, and unmounting right away drops that save.
+    setTimeout(() => {
+      setVisible(false);
       const n = pickedCount();
       if (n > 0) setCount(n);
-      return n;
-    };
-    read();
-    setTimeout(() => {
-      read();
-      onPicked?.(pickedCount());
-    }, 500);
+      onPicked?.(n);
+    }, 1200);
   }, [onPicked]);
 
   // Re-read when a screen mounts again (another screen may have changed the selection).
