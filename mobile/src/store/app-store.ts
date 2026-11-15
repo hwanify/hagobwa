@@ -55,6 +55,8 @@ interface BlockerSync {
   blockerSince: number;
   /** Seconds of that monitor's usage already charged to the balance. */
   blockerCharged: number;
+  /** When the usage window ends (0 = none running, -1 = unknown, e.g. after an update). */
+  blockerUntil: number;
 }
 
 export type AppState = Settings & { bank: BankState } & BlockerSync & Actions;
@@ -62,6 +64,7 @@ export type AppState = Settings & { bank: BankState } & BlockerSync & Actions;
 const defaults: Settings & { bank: BankState } & BlockerSync = {
   blockerSince: 0,
   blockerCharged: 0,
+  blockerUntil: -1,
   onboarded: false,
   goalHours: 2,
   lockedApps: ['youtube', 'instagram'],
@@ -138,7 +141,7 @@ export const useAppStore = create<AppState>()(
       },
 
       clearBalance: () => {
-        set({ bank: { ...endSession(get().bank, Date.now()), balanceSec: 0 }, blockerSince: 0, blockerCharged: 0 });
+        set({ bank: { ...endSession(get().bank, Date.now()), balanceSec: 0 }, blockerSince: 0, blockerCharged: 0, blockerUntil: -1 });
         void get().syncBlocker();
       },
 
@@ -150,18 +153,17 @@ export const useAppStore = create<AppState>()(
         const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
         const bank = chargeScreenTime(s.bank, Math.max(0, used - s.blockerCharged), now);
         // Restarting the monitor drops the partial minute in progress, so only restart when the
-        // balance changed (charge, emergency, picker) or the monitor is from before midnight
-        // (iOS resets usage then and shields the apps until we re-sync).
-        const midnight = new Date(now);
-        midnight.setHours(0, 0, 0, 0);
-        const stale = s.blockerSince < midnight.getTime();
+        // balance changed (charge, emergency, picker) or the usage window is about to end.
+        const until = s.blockerUntil ?? -1;
+        const stale = until < 0 || (until > 0 && now > until - 15 * 60_000);
         if (!restart && !stale) {
           set({ bank, blockerCharged: Math.max(s.blockerCharged, used) });
           return;
         }
         set({ bank, blockerSince: now, blockerCharged: 0 });
         try {
-          await blocker.apply(get().onboarded ? bank.balanceSec : 0, repsNeeded(600, 'pushup', get().difficulty));
+          const ends = await blocker.apply(get().onboarded ? bank.balanceSec : 0, repsNeeded(600, 'pushup', get().difficulty));
+          set({ blockerUntil: ends });
         } catch {
           // Screen Time refused (e.g. permission revoked): keep the in-app balance as is.
         }
@@ -171,9 +173,10 @@ export const useAppStore = create<AppState>()(
       name: 'hagobwa-v1',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince, blockerCharged }) => ({
+      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince, blockerCharged, blockerUntil }) => ({
         blockerSince,
         blockerCharged,
+        blockerUntil,
         onboarded,
         goalHours,
         lockedApps,

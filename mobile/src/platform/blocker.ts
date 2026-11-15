@@ -32,8 +32,11 @@ export interface AppBlocker {
   hasSelection(): boolean;
   /** Seconds of usage the OS reported since `since` (0 when simulated). */
   usedSecondsSince(since: number): number;
-  /** Shield or unshield to match the balance. `reps10` = push-ups that earn 10 minutes. */
-  apply(balanceSec: number, reps10?: number): Promise<void>;
+  /**
+   * Shield or unshield to match the balance. `reps10` = push-ups that earn 10 minutes.
+   * Returns when the usage window ends (0 = no window running).
+   */
+  apply(balanceSec: number, reps10?: number): Promise<number>;
   /** One-line status for bug reports (empty when simulated). */
   diagnose(): string;
 }
@@ -41,6 +44,30 @@ export interface AppBlocker {
 /** familyActivitySelectionId shared with the picker views. */
 export const SELECTION_ID = 'hagobwa.locked';
 const ACTIVITY = 'hagobwa.usage';
+/**
+ * Usage window length. Within one window iOS keeps counting across midnight; every charge
+ * starts a new one. Kept just under a week, the longest window iOS is documented to allow.
+ */
+const WINDOW_MS = 7 * 24 * 3600_000 - 10 * 60_000;
+let monitorUntil = 0;
+let monitorMode: 'none' | 'week' | 'day' = 'none';
+
+/** When the current usage window ends (0 if none). The app re-syncs before that. */
+export function monitorEndsAt(): number {
+  return monitorUntil;
+}
+
+function dateParts(d: Date) {
+  return {
+    year: d.getFullYear(),
+    month: d.getMonth() + 1,
+    day: d.getDate(),
+    hour: d.getHours(),
+    minute: d.getMinutes(),
+    second: d.getSeconds(),
+  };
+}
+
 /** No underscores: the library splits stored event keys on '_'. */
 const EVENT_PREFIX = 'm';
 /** iOS sometimes fires usage events right after monitoring starts; ignore anything that early. */
@@ -57,7 +84,9 @@ const simulated: AppBlocker = {
   },
   hasSelection: () => true,
   usedSecondsSince: () => 0,
-  async apply() {},
+  async apply() {
+    return 0;
+  },
   diagnose: () => '',
 };
 
@@ -150,25 +179,25 @@ const screenTime: AppBlocker = {
   },
 
   async apply(balanceSec, reps10 = 10) {
-    if (ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return;
+    if (ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return 0;
     const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
     await ensureShield(reps10);
     ScreenTime.stopMonitoring([ACTIVITY]);
     ScreenTime.cleanUpAfterActivity(ACTIVITY);
     // Start from a clean slate so apps removed from the selection don't stay shielded.
     ScreenTime.resetBlocks('hagobwa:sync');
-    if (!token || !this.hasSelection()) return;
+    monitorUntil = 0;
+    monitorMode = 'none';
+    if (!token || !this.hasSelection()) return 0;
 
     const marks = usageCheckpoints(balanceSec);
     if (marks.length === 0) {
       ScreenTime.blockSelection(selection(), 'hagobwa:empty');
-      return;
+      return 0;
     }
 
     const now = Date.now();
     const last = marks[marks.length - 1];
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
     ScreenTime.configureActions({
       activityName: ACTIVITY,
       callbackName: 'eventDidReachThreshold',
@@ -181,29 +210,47 @@ const screenTime: AppBlocker = {
         },
       ],
     });
-    // stopMonitoring() above also reports intervalDidEnd, so only honour the real one at midnight.
-    ScreenTime.configureActions({
-      activityName: ACTIVITY,
-      callbackName: 'intervalDidEnd',
-      actions: [
-        {
-          type: 'blockSelection',
-          familyActivitySelectionId: SELECTION_ID,
-          neverTriggerBefore: new Date(midnight.getTime() - 120_000),
-        },
-      ],
-    });
+    const events = marks.map((m) => ({
+      eventName: `${EVENT_PREFIX}${m}`,
+      familyActivitySelection: token,
+      threshold: { hour: Math.floor(m / 60), minute: m % 60 },
+      includesPastActivity: false,
+    }));
+    // When the window really ends, shield again (stopMonitoring above also reports
+    // intervalDidEnd, so only honour it near the real end).
+    const relockAt = (end: number) =>
+      ScreenTime.configureActions({
+        activityName: ACTIVITY,
+        callbackName: 'intervalDidEnd',
+        actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID, neverTriggerBefore: new Date(end - 120_000) }],
+      });
 
+    // One window from now that doesn't reset at midnight, so usage carries across days.
+    const end = now + WINDOW_MS;
+    relockAt(end);
+    try {
+      await ScreenTime.startMonitoring(
+        ACTIVITY,
+        { intervalStart: dateParts(new Date(now)), intervalEnd: dateParts(new Date(end)), repeats: false },
+        events,
+      );
+      monitorUntil = end;
+      monitorMode = 'week';
+      return end;
+    } catch {
+      // iOS refused the long window: fall back to a daily window (re-locks at midnight).
+    }
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    relockAt(midnight.getTime());
     await ScreenTime.startMonitoring(
       ACTIVITY,
       { intervalStart: { hour: 0, minute: 0, second: 0 }, intervalEnd: { hour: 23, minute: 59, second: 59 }, repeats: true },
-      marks.map((m) => ({
-        eventName: `${EVENT_PREFIX}${m}`,
-        familyActivitySelection: token,
-        threshold: { hour: Math.floor(m / 60), minute: m % 60 },
-        includesPastActivity: false,
-      })),
+      events,
     );
+    monitorUntil = midnight.getTime();
+    monitorMode = 'day';
+    return monitorUntil;
   },
 };
 
@@ -230,7 +277,7 @@ screenTime.diagnose = () => {
     ? `${(last.triggeredBy ?? '?').replace('actions_for_', '확장:').replace('hagobwa.usage_', '')} ${last.blocklistAppCount ?? '?'}개 ${(last.blockedAt ?? '').slice(11, 19)}`
     : '없음';
   const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 6), '?');
-  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors} · 마지막잠금변경 ${lastText} · v${ota}`;
+  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}(${monitorMode}) · 마지막잠금변경 ${lastText} · v${ota}`;
 };
 
 function pick(): AppBlocker {
