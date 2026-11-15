@@ -195,8 +195,15 @@ screenTime.diagnose = () => {
   const picked = `${meta ? `${meta.applicationCount}/${meta.categoryCount}/${meta.webDomainCount}` : '?'} 토큰${token ? token.length : '없음'}`;
   const shield = safe(() => (ScreenTime.isShieldActive() ? '켜짐' : '꺼짐'), '?');
   const monitors = safe(() => ScreenTime.getActivities().length, -1);
+  const last = safe(
+    () => ScreenTime.userDefaultsGet<{ triggeredBy?: string; blockedAt?: string; blocklistAppCount?: number }>('lastBlockUpdate'),
+    undefined,
+  );
+  const lastText = last
+    ? `${(last.triggeredBy ?? '?').replace('actions_for_', '확장:').replace('hagobwa.usage_', '')} ${last.blocklistAppCount ?? '?'}개 ${(last.blockedAt ?? '').slice(11, 19)}`
+    : '없음';
   const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 6), '?');
-  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors} · v${ota}`;
+  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors} · 마지막잠금변경 ${lastText} · v${ota}`;
 };
 
 function pick(): AppBlocker {
