@@ -123,11 +123,14 @@ const screenTime: AppBlocker = {
   },
 
   async apply(balanceSec) {
+    if (ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return;
     const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
-    if (!token || ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return;
     ensureShield();
     ScreenTime.stopMonitoring([ACTIVITY]);
     ScreenTime.cleanUpAfterActivity(ACTIVITY);
+    // Start from a clean slate so apps removed from the selection don't stay shielded.
+    ScreenTime.resetBlocks('hagobwa:sync');
+    if (!token || !this.hasSelection()) return;
 
     const marks = usageCheckpoints(balanceSec);
     if (marks.length === 0) {
@@ -164,8 +167,6 @@ const screenTime: AppBlocker = {
       ],
     });
 
-    // We only ever shield this one selection, so clearing every block is the reliable unlock.
-    ScreenTime.resetBlocks('hagobwa:charged');
     await ScreenTime.startMonitoring(
       ACTIVITY,
       { intervalStart: { hour: 0, minute: 0, second: 0 }, intervalEnd: { hour: 23, minute: 59, second: 59 }, repeats: true },

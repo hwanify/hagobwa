@@ -8,6 +8,7 @@ import { formatDuration } from '@/core/format';
 import { DIFFICULTIES, secondsPerRep } from '@/core/rates';
 import { VOICE_MODES } from '@/core/voice';
 import { say } from '@/platform/feedback';
+import { LockedAppList } from '@/features/lock/LockedAppList';
 import { useLockPicker } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
@@ -24,7 +25,11 @@ export default function Settings() {
   const s = useAppStore();
   const [note, setNote] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const picker = useLockPicker(() => void s.syncBlocker());
+  const [pickerKey, setPickerKey] = useState(0);
+  const picker = useLockPicker(() => {
+    setPickerKey((k) => k + 1);
+    void s.syncBlocker();
+  });
 
   const toggleApp = (id: AppId) => {
     setNote('');
@@ -74,10 +79,13 @@ export default function Settings() {
 
       <H2 style={styles.section}>잠글 앱</H2>
       {blocker.kind === 'ios-screentime' ? (
-        <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow}>
-          <T>{picker.count > 0 ? `${picker.count}개 잠그는 중` : '아직 고르지 않았어요'}</T>
-          <T style={{ fontWeight: '700', color: colors.red }}>고르기</T>
-        </Pressable>
+        <View>
+          <LockedAppList open={s.bank.balanceSec >= 60} refreshKey={pickerKey + picker.count} />
+          <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow}>
+            <T>{picker.count > 0 ? `${picker.count}개 잠그는 중` : '아직 고르지 않았어요'}</T>
+            <T style={{ fontWeight: '700', color: colors.red }}>{picker.count > 0 ? '추가·변경' : '고르기'}</T>
+          </Pressable>
+        </View>
       ) : LOCKABLE_APPS.map((a, i) => {
         const on = s.lockedApps.includes(a.id);
         return (

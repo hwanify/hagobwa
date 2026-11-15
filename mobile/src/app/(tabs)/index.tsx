@@ -1,5 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import {
@@ -20,6 +21,7 @@ import { appById, type AppId } from "@/core/apps";
 import { formatDuration, minutesOf } from "@/core/format";
 import { EXERCISE_LABEL } from "@/core/rates";
 import { capFor, streakDays, todayReps } from "@/core/timebank";
+import { LockedAppList } from "@/features/lock/LockedAppList";
 import { useLockPicker } from "@/features/lock/LockPicker";
 import { blocker } from "@/platform/blocker";
 import { useAppStore, useNow } from "@/store/app-store";
@@ -164,35 +166,30 @@ export default function Home() {
   );
 }
 
-/** iOS: the picked apps are opaque tokens, so show their state instead of a list. */
+/** iOS: the picked apps with their real icons (drawn by iOS) and a way to unlock each. */
 function NativeLockStatus({ open }: { open: boolean }) {
-  const picker = useLockPicker(() => void useAppStore.getState().syncBlocker());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const picker = useLockPicker(() => {
+    setRefreshKey((k) => k + 1);
+    void useAppStore.getState().syncBlocker();
+  });
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void picker.open()}
-        style={[styles.appRow, { marginTop: 18 }]}
-      >
-        <Ionicons
-          name={open ? "lock-open-outline" : "lock-closed"}
-          size={22}
-          color={open ? colors.mute : colors.red}
-        />
-        <View style={{ flex: 1 }}>
-          <T style={{ fontSize: 15, fontWeight: "700" }}>
-            {picker.count > 0
-              ? `고른 앱 ${picker.count}개 · ${open ? "열려 있어요" : "잠겨 있어요"}`
-              : "잠글 앱을 골라 주세요"}
-          </T>
-          <Muted style={{ fontSize: 12 }}>
-            {open
-              ? "충전한 시간을 다 쓰면 다시 잠겨요"
-              : "운동하고 충전하면 열려요"}
-          </Muted>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={colors.mute} />
-      </Pressable>
+      <Row style={{ justifyContent: 'space-between', marginTop: 24, marginBottom: 4 }}>
+        <T style={{ fontSize: 15, fontWeight: '700' }}>
+          잠긴 앱 {picker.count}
+          <T style={{ fontSize: 13, fontWeight: '600', color: open ? colors.mute : colors.red }}> · {open ? '열려 있어요' : '잠겨 있어요'}</T>
+        </T>
+        <Pressable accessibilityRole="button" onPress={() => void picker.open()} hitSlop={8}>
+          <T style={{ fontSize: 13, fontWeight: '700', color: colors.red }}>{picker.count > 0 ? '추가' : '고르기'}</T>
+        </Pressable>
+      </Row>
+      {picker.count === 0 ? (
+        <Muted style={{ paddingVertical: 12 }}>잠글 앱을 골라 주세요.</Muted>
+      ) : (
+        <LockedAppList open={open} refreshKey={refreshKey + picker.count} />
+      )}
+      <Muted style={{ fontSize: 12, marginTop: 6 }}>{open ? '충전한 시간을 다 쓰면 다시 잠겨요' : '운동하고 충전하면 열려요'}</Muted>
       {picker.element}
     </>
   );
