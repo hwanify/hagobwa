@@ -85,6 +85,22 @@ jobs:
             || npx eas-cli env:create production --name APPLE_TEAM_ID --value "$EXPO_APPLE_TEAM_ID" \
                  --visibility sensitive --force --non-interactive
 
+      # Family Controls (Distribution) is enabled by hand on developer.apple.com: Apple's API
+      # can't set it and reports it under a type eas-cli doesn't know, so eas-cli would keep trying
+      # (and fail) to turn it on. Drop that one entry from eas-cli's capability sync; App Groups etc.
+      # still sync automatically.
+      - name: Skip Family Controls in eas-cli capability sync
+        run: |
+          for f in $(find ~/.npm/_npx -path '*eas-cli/build/credentials/ios/appstore/capabilityList.js'); do
+            node -e '
+              const fs = require("fs"); const f = process.argv[1];
+              let s = fs.readFileSync(f, "utf8");
+              const re = /\{\s*name: .Family Controls.,[\s\S]*?getSyncOperation: getBooleanSyncOperation,\s*\},/;
+              if (!re.test(s)) { console.log("already patched or changed:", f); process.exit(0); }
+              fs.writeFileSync(f, s.replace(re, "")); console.log("patched", f);
+            ' "$f"
+          done
+
       - name: Decide build or OTA
         id: decide
         run: |
