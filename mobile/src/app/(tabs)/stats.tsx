@@ -3,10 +3,10 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Legend, MonthHeatmap, SERIES, SplitBar, WeekBars } from '@/components/charts';
-import { H1, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
+import { Card, Divider, H1, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { addDays, startOfDay, startOfWeek, WEEKDAY_LABELS } from '@/core/dates';
 import { formatDuration } from '@/core/format';
-import { EXERCISE_LABEL, EXERCISES, type ExerciseId } from '@/core/rates';
+import { EXERCISE_LABEL, EXERCISES } from '@/core/rates';
 import { dailyTotals, dayLogs, exerciseTotals, streakDays, type DayLog, type WorkoutRecord } from '@/core/timebank';
 import { openCharge } from '@/navigation';
 import { useAppStore, useNow } from '@/store/app-store';
@@ -20,11 +20,6 @@ const PERIODS: { id: Period; label: string }[] = [
   { id: 'month', label: '이번 달' },
   { id: 'all', label: '전체' },
 ];
-
-const BADGE: Record<ExerciseId, { icon: keyof typeof Ionicons.glyphMap; bg: string; fg: string }> = {
-  pushup: { icon: 'barbell', bg: '#FBE3E4', fg: colors.red },
-  squat: { icon: 'walk', bg: '#FCEEEE', fg: '#E9797C' },
-};
 
 function dayTitle(day: number, today: number): string {
   if (day === today) return '오늘';
@@ -51,25 +46,20 @@ function Section({ title, right, children, first }: { title: string; right?: Rea
   );
 }
 
-/** One workout as a log entry: exercise badge, what was done, when, and the time it earned. */
-function RecordRow({ w, showDate, today }: { w: WorkoutRecord; showDate?: boolean; today: number }) {
-  const when = showDate ? `${dayTitle(startOfDay(w.at), today)} ${timeOf(w.at)}` : timeOf(w.at);
+/** One workout as a log entry: time, what was done (series dot), and the time it earned. */
+function RecordRow({ w, today }: { w: WorkoutRecord; today: number }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${EXERCISE_LABEL[w.exercise]} ${w.reps}회, ${when}, ${formatDuration(w.earnedSec)} 충전`}
+      accessibilityLabel={`${dayTitle(startOfDay(w.at), today)} ${timeOf(w.at)} ${EXERCISE_LABEL[w.exercise]} ${w.reps}회, ${formatDuration(w.earnedSec)} 충전`}
       onPress={() => openCharge(w.id)}
       style={({ pressed }) => [styles.record, pressed && { opacity: 0.6 }]}
     >
-      <View style={[styles.badge, { backgroundColor: BADGE[w.exercise].bg }]}>
-        <Ionicons name={BADGE[w.exercise].icon} size={18} color={BADGE[w.exercise].fg} />
-      </View>
-      <View style={{ flex: 1, gap: 2 }}>
-        <T style={{ fontSize: 16, fontWeight: '700' }}>
-          {EXERCISE_LABEL[w.exercise]} {w.reps}회
-        </T>
-        <Muted style={{ fontSize: 13 }}>{when}</Muted>
-      </View>
+      <Mono style={styles.recordTime}>{timeOf(w.at)}</Mono>
+      <View style={[styles.dot, { backgroundColor: SERIES[w.exercise] }]} />
+      <T style={{ flex: 1, fontSize: 16, fontWeight: '600' }}>
+        {EXERCISE_LABEL[w.exercise]} {w.reps}회
+      </T>
       <Mono style={{ fontSize: 15, color: colors.red }}>+{formatDuration(w.earnedSec)}</Mono>
       <Ionicons name="chevron-forward" size={16} color={colors.mute} />
     </Pressable>
@@ -90,8 +80,11 @@ function RecordList({ logs, today }: { logs: DayLog[]; today: number }) {
                 .join(' · ')}
             </Muted>
           </Row>
-          {log.workouts.map((w) => (
-            <RecordRow key={w.id} w={w} today={today} />
+          {log.workouts.map((w, i) => (
+            <View key={w.id}>
+              {i > 0 && <Divider />}
+              <RecordRow w={w} today={today} />
+            </View>
           ))}
         </View>
       ))}
@@ -99,38 +92,41 @@ function RecordList({ logs, today }: { logs: DayLog[]; today: number }) {
   );
 }
 
-/** Day breakdown: big per-exercise numbers, a split bar, and the time earned. */
+/** 푸시업 · 스쿼트 · 충전 as grey stat cards (same style as 홈). */
+function StatCards({ pushup, squat, earnedSec }: { pushup: number; squat: number; earnedSec: number }) {
+  return (
+    <Row style={{ gap: 8 }}>
+      <Card style={{ flex: 1 }}>
+        <Row style={{ gap: 6 }}>
+          <View style={[styles.dot, { backgroundColor: SERIES.pushup }]} />
+          <Muted style={{ fontSize: 12 }}>푸시업</Muted>
+        </Row>
+        <T style={styles.stat}>{pushup}회</T>
+      </Card>
+      <Card style={{ flex: 1 }}>
+        <Row style={{ gap: 6 }}>
+          <View style={[styles.dot, { backgroundColor: SERIES.squat }]} />
+          <Muted style={{ fontSize: 12 }}>스쿼트</Muted>
+        </Row>
+        <T style={styles.stat}>{squat}회</T>
+      </Card>
+      <Card style={{ flex: 1 }}>
+        <Muted style={{ fontSize: 12 }}>충전</Muted>
+        <T style={[styles.stat, { color: colors.red }]} numberOfLines={1}>
+          {Math.floor(earnedSec / 60).toLocaleString('ko-KR')}분
+        </T>
+      </Card>
+    </Row>
+  );
+}
+
+/** A day's split: grey stat cards and the push-up/squat bar. */
 function DayBreakdown({ pushup, squat, earnedSec }: { pushup: number; squat: number; earnedSec: number }) {
   if (pushup + squat === 0) return <Muted>운동 기록이 없는 날이에요.</Muted>;
   return (
     <View style={{ gap: 14 }}>
-      <Row style={{ gap: 28, alignItems: 'flex-end' }}>
-        <View>
-          <Row style={{ gap: 6 }}>
-            <View style={[styles.dot, { backgroundColor: SERIES.pushup }]} />
-            <Muted style={{ fontSize: 13 }}>푸시업</Muted>
-          </Row>
-          <Mono style={styles.big}>
-            {pushup}
-            <T style={styles.unit}>회</T>
-          </Mono>
-        </View>
-        <View>
-          <Row style={{ gap: 6 }}>
-            <View style={[styles.dot, { backgroundColor: SERIES.squat }]} />
-            <Muted style={{ fontSize: 13 }}>스쿼트</Muted>
-          </Row>
-          <Mono style={styles.big}>
-            {squat}
-            <T style={styles.unit}>회</T>
-          </Mono>
-        </View>
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-          <Muted style={{ fontSize: 13 }}>충전</Muted>
-          <Mono style={[styles.big, { color: colors.red, fontSize: 22 }]}>+{formatDuration(earnedSec)}</Mono>
-        </View>
-      </Row>
-      <SplitBar pushup={pushup} squat={squat} height={12} />
+      <StatCards pushup={pushup} squat={squat} earnedSec={earnedSec} />
+      <SplitBar pushup={pushup} squat={squat} height={10} />
     </View>
   );
 }
@@ -163,7 +159,16 @@ export default function Stats() {
           <DayBreakdown pushup={t.pushup} squat={t.squat} earnedSec={t.earnedSec} />
         </Section>
         <Section title="운동 기록" right={logs[0] ? `${logs[0].workouts.length}건` : undefined}>
-          {logs[0] ? logs[0].workouts.map((w) => <RecordRow key={w.id} w={w} today={today} />) : <Muted>아직 오늘 운동 기록이 없어요.</Muted>}
+          {logs[0] ? (
+            logs[0].workouts.map((w, i) => (
+              <View key={w.id}>
+                {i > 0 && <Divider />}
+                <RecordRow w={w} today={today} />
+              </View>
+            ))
+          ) : (
+            <Muted>아직 오늘 운동 기록이 없어요.</Muted>
+          )}
         </Section>
       </>
     );
@@ -192,7 +197,16 @@ export default function Stats() {
         {sel && (
           <Section title={dayTitle(sel.day, today)}>
             <DayBreakdown pushup={sel.pushup} squat={sel.squat} earnedSec={sel.earnedSec} />
-            {selLog && <View style={{ marginTop: 12 }}>{selLog.workouts.map((w) => <RecordRow key={w.id} w={w} today={today} />)}</View>}
+            {selLog && (
+              <View style={{ marginTop: 8 }}>
+                {selLog.workouts.map((w, i) => (
+                  <View key={w.id}>
+                    {i > 0 && <Divider />}
+                    <RecordRow w={w} today={today} />
+                  </View>
+                ))}
+              </View>
+            )}
           </Section>
         )}
       </>
@@ -213,18 +227,9 @@ export default function Stats() {
       </View>
 
       {period !== 'today' && !empty && (
-        <Row style={styles.summary}>
-          {EXERCISES.map((e) => (
-            <View key={e.id} style={styles.summaryItem}>
-              <Muted style={{ fontSize: 12 }}>{e.label}</Muted>
-              <T style={styles.stat}>{totals[e.id].reps}회</T>
-            </View>
-          ))}
-          <View style={styles.summaryItem}>
-            <Muted style={{ fontSize: 12 }}>충전</Muted>
-            <T style={styles.stat}>{formatDuration(totals.pushup.earnedSec + totals.squat.earnedSec)}</T>
-          </View>
-        </Row>
+        <View style={{ marginTop: 20 }}>
+          <StatCards pushup={totals.pushup.reps} squat={totals.squat.reps} earnedSec={totals.pushup.earnedSec + totals.squat.earnedSec} />
+        </View>
       )}
 
       {empty ? <Muted style={{ paddingVertical: 24 }}>아직 운동 기록이 없어요. 운동하면 여기에 쌓여요.</Muted> : body}
@@ -234,18 +239,8 @@ export default function Stats() {
 
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
-  summary: {
-    marginTop: 20,
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  summaryItem: { flex: 1, gap: 2 },
-  stat: { fontSize: 18, fontWeight: '800' },
-  record: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  badge: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  record: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
+  recordTime: { width: 48, fontSize: 14, color: colors.mute },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  big: { fontSize: 30, letterSpacing: -1, marginTop: 2 },
-  unit: { fontSize: 15, fontWeight: '700' },
 });
