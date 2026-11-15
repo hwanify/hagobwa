@@ -7,6 +7,7 @@ import {
   applyEmergency,
   BankError,
   creditWorkout,
+  dailyTotals,
   dayLogs,
   emergencyLeft,
   exerciseTotals,
@@ -143,6 +144,17 @@ describe('timebank', () => {
     expect(logs[0].totals).toEqual({ pushup: 15, squat: 20 });
     expect(logs[0].workouts[0].exercise).toBe('squat');
     expect(logs[1].totals).toEqual({ pushup: 10, squat: 0 });
+  });
+
+  it('daily totals cover every day in range, empty days included', () => {
+    let s = emptyBank();
+    s = creditWorkout(s, { exercise: 'pushup', reps: 12, difficulty: 'normal', now: T0 - DAY, capSec: 10 * CAP }).state;
+    s = creditWorkout(s, { exercise: 'squat', reps: 8, difficulty: 'normal', now: T0, capSec: 10 * CAP }).state;
+    s = creditWorkout(s, { exercise: 'pushup', reps: 3, difficulty: 'normal', now: T0 + 60_000, capSec: 10 * CAP }).state;
+    const start = new Date(2026, 10, 12).getTime();
+    const days = dailyTotals(s, start, 4); // 12, 13, 14, 15 Nov
+    expect(days.map((d) => [d.pushup, d.squat])).toEqual([[0, 0], [12, 0], [3, 8], [0, 0]]);
+    expect(days[2].earnedSec).toBe(3 * 60 + 8 * 30);
   });
 
   it('week series is Monday-first', () => {

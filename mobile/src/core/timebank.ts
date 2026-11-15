@@ -230,3 +230,29 @@ export function dayLogs(state: BankState, from: number, to: number): DayLog[] {
   for (const l of logs) l.workouts.sort((a, b) => b.at - a.at);
   return logs;
 }
+
+export interface DayTotal {
+  /** Local midnight of the day. */
+  day: number;
+  pushup: number;
+  squat: number;
+  earnedSec: number;
+}
+
+/** One entry per calendar day starting at `from` (local midnight), `days` long. */
+export function dailyTotals(state: BankState, from: number, days: number): DayTotal[] {
+  const out: DayTotal[] = Array.from({ length: days }, (_, i) => ({
+    day: addDays(from, i),
+    pushup: 0,
+    squat: 0,
+    earnedSec: 0,
+  }));
+  const index = new Map(out.map((d, i) => [d.day, i]));
+  for (const w of state.workouts) {
+    const i = index.get(startOfDay(w.at));
+    if (i === undefined) continue;
+    out[i][w.exercise] += w.reps;
+    out[i].earnedSec += w.earnedSec;
+  }
+  return out;
+}
