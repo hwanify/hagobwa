@@ -161,7 +161,6 @@ export function MonthHeatmap({
                 ]}
               >
                 <T style={[styles.calDay, { color: future ? '#8A8D93' : dark ? colors.white : colors.ink }]}>{new Date(d.day).getDate()}</T>
-                {!future && total > 0 && <T style={[styles.calReps, { color: dark ? colors.white : colors.ink }]}>{total}</T>}
               </Pressable>
             );
           })}
@@ -191,8 +190,7 @@ const styles = StyleSheet.create({
   calFuture: { borderWidth: 1, borderStyle: 'dashed', borderColor: colors.line, backgroundColor: colors.white },
   calToday: { borderWidth: 3, borderColor: colors.ink },
   calSelected: { borderWidth: 2, borderColor: '#3F4248' },
-  calDay: { fontSize: 14, fontWeight: '700', lineHeight: 16 },
-  calReps: { fontSize: 11, fontWeight: '700', lineHeight: 13 },
+  calDay: { fontSize: 15, fontWeight: '700' },
   heatLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 4 },
   heatLegendText: { fontSize: 13, fontWeight: '700' },
   heatSwatch: { width: 18, height: 18, borderRadius: 5 },
