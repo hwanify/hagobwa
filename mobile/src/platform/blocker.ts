@@ -1,8 +1,11 @@
+import { Asset } from 'expo-asset';
 import * as Updates from 'expo-updates';
 import { Platform } from 'react-native';
 import * as ScreenTime from 'react-native-device-activity';
 
 import { usageCheckpoints } from '@/core/timebank';
+
+import { requestNotifications } from '../../modules/locked-apps';
 
 /**
  * The OS-level app blocker.
@@ -59,33 +62,70 @@ const simulated: AppBlocker = {
   diagnose: () => '',
 };
 
+// 하고봐 palette (src/theme): paper background, ink text, red accent.
 const RED = { red: 224, green: 69, blue: 74 };
+const PAPER = { red: 247, green: 247, blue: 243 };
+const INK = { red: 28, green: 28, blue: 26 };
+const MUTE = { red: 112, green: 112, blue: 106 };
 const WHITE = { red: 255, green: 255, blue: 255 };
+const ICON_FILE = 'hagobwa-shield-icon.png';
 
 function selection() {
   return { activitySelectionId: SELECTION_ID } as const;
 }
 
+/** Copy the app icon into the shared App Group folder so the shield extension can show it. */
+async function prepareShieldIcon(): Promise<boolean> {
+  try {
+    const asset = Asset.fromModule(require('../../assets/images/shield-icon.png'));
+    await asset.downloadAsync();
+    const dir = ScreenTime.getAppGroupFileDirectory();
+    if (!asset.localUri || !dir) return false;
+    ScreenTime.copyFile(asset.localUri, `${dir.replace(/\/?$/, '/')}${ICON_FILE}`, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let shieldReady = false;
-function ensureShield() {
+async function ensureShield() {
   if (shieldReady) return;
+  shieldReady = true;
+  void requestNotifications();
+  const hasIcon = await prepareShieldIcon();
   ScreenTime.updateShield(
     {
-      backgroundColor: RED,
-      backgroundBlurStyle: undefined,
-      title: '지금은 잠겨 있어요',
-      titleColor: WHITE,
-      subtitle: '하고봐에서 푸시업이나 스쿼트로\n시간을 충전하면 열려요.',
-      subtitleColor: { ...WHITE, alpha: 0.85 },
-      iconSystemName: 'lock.fill',
-      iconTint: WHITE,
-      primaryButtonLabel: '닫기',
-      primaryButtonLabelColor: RED,
-      primaryButtonBackgroundColor: WHITE,
+      // Light, opaque look like the app. A light blur keeps the edges paper-coloured too
+      // (a coloured background peeked out as a red square in the app switcher).
+      backgroundColor: PAPER,
+      backgroundBlurStyle: ScreenTime.UIBlurEffectStyle.extraLight,
+      title: '{applicationOrDomainDisplayName}은(는)\n지금 잠겨 있어요',
+      titleColor: INK,
+      subtitle: '푸시업이나 스쿼트로 시간을 충전하면 열려요.',
+      subtitleColor: MUTE,
+      ...(hasIcon ? { iconAppGroupRelativePath: ICON_FILE } : { iconSystemName: 'lock.fill', iconTint: RED }),
+      primaryButtonLabel: '하고봐에서 충전하기',
+      primaryButtonLabelColor: WHITE,
+      primaryButtonBackgroundColor: RED,
+      secondaryButtonLabel: '닫기',
+      secondaryButtonLabelColor: MUTE,
     },
-    { primary: { behavior: 'close' } },
+    {
+      // A shield can't open an app directly; a notification the user taps is the reliable way.
+      primary: {
+        type: 'sendNotification',
+        behavior: 'close',
+        payload: {
+          title: '하고봐에서 충전하기',
+          body: '탭하면 하고봐가 열려요. 운동하고 시간을 충전하세요.',
+          sound: 'default',
+          interruptionLevel: 'active',
+        },
+      },
+      secondary: { behavior: 'close' },
+    },
   );
-  shieldReady = true;
 }
 
 const screenTime: AppBlocker = {
@@ -95,9 +135,14 @@ const screenTime: AppBlocker = {
 
   async requestAuthorization() {
     try {
-      if (ScreenTime.getAuthorizationStatus() === ScreenTime.AuthorizationStatus.approved) return true;
+      if (ScreenTime.getAuthorizationStatus() === ScreenTime.AuthorizationStatus.approved) {
+        void requestNotifications();
+        return true;
+      }
       await ScreenTime.requestAuthorization('individual');
-      return ScreenTime.getAuthorizationStatus() === ScreenTime.AuthorizationStatus.approved;
+      const ok = ScreenTime.getAuthorizationStatus() === ScreenTime.AuthorizationStatus.approved;
+      if (ok) await requestNotifications();
+      return ok;
     } catch {
       return false;
     }
@@ -125,7 +170,7 @@ const screenTime: AppBlocker = {
   async apply(balanceSec) {
     if (ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return;
     const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
-    ensureShield();
+    await ensureShield();
     ScreenTime.stopMonitoring([ACTIVITY]);
     ScreenTime.cleanUpAfterActivity(ACTIVITY);
     // Start from a clean slate so apps removed from the selection don't stay shielded.

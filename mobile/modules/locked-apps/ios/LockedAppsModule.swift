@@ -2,6 +2,7 @@ import ExpoModulesCore
 import FamilyControls
 import ManagedSettings
 import SwiftUI
+import UserNotifications
 
 // Selections travel as base64 JSON of FamilyActivitySelection, the same format
 // react-native-device-activity stores, so tokens can be passed back to it.
@@ -40,6 +41,13 @@ public class LockedAppsModule: Module {
         out.append(["kind": "web", "token": encodeSelection(one)])
       }
       return out
+    }
+
+    /// Notification permission: the lock screen's "충전하기" button opens 하고봐 through a notification.
+    AsyncFunction("requestNotifications") { (promise: Promise) in
+      UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+        promise.resolve(granted)
+      }
     }
 
     View(LockedAppLabelView.self) {

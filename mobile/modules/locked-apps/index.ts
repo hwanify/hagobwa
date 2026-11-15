@@ -8,7 +8,7 @@ export interface PickedItem {
   token: string;
 }
 
-const native = Platform.OS === 'ios' ? requireOptionalNativeModule<{ split(selection: string): PickedItem[] }>('LockedApps') : null;
+const native = Platform.OS === 'ios' ? requireOptionalNativeModule<{ split(selection: string): PickedItem[]; requestNotifications(): Promise<boolean> }>('LockedApps') : null;
 
 /** True when this build includes the native module (older builds don't). */
 export const isAvailable = !!native;
@@ -18,6 +18,15 @@ export function splitSelection(selection: string): PickedItem[] {
     return native?.split(selection) ?? [];
   } catch {
     return [];
+  }
+}
+
+/** Ask for notification permission (used to open 하고봐 from the lock screen). */
+export async function requestNotifications(): Promise<boolean> {
+  try {
+    return (await native?.requestNotifications()) ?? false;
+  } catch {
+    return false;
   }
 }
 
