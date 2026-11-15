@@ -65,6 +65,11 @@ export default function Onboarding() {
     ) : native ? (
       picker.count > 0 ? (
         <Button label={`${picker.count}개 잠그고 첫 충전하기`} onPress={finishNative} />
+      ) : picker.closedOnce ? (
+        <View style={{ gap: 6 }}>
+          <Button label="다시 고르기" onPress={pickApps} />
+          <Button variant="ghost" label="일단 넘어가기 (설정에서 다시 고를 수 있어요)" onPress={finishNative} />
+        </View>
       ) : (
         <Button label="허용하고 잠글 앱 고르기" onPress={pickApps} />
       )
@@ -130,6 +135,11 @@ export default function Onboarding() {
             </Pressable>
           )}
           {note ? <T style={styles.note}>{note}</T> : null}
+          {picker.closedOnce && (
+            <Muted style={{ fontSize: 11, marginTop: 16 }}>
+              진단: {blocker.diagnose()} · 마지막 선택 {picker.lastEvent}
+            </Muted>
+          )}
           {picker.element}
         </View>
       )}

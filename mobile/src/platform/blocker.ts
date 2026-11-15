@@ -1,3 +1,4 @@
+import * as Updates from 'expo-updates';
 import { Platform } from 'react-native';
 import * as ScreenTime from 'react-native-device-activity';
 
@@ -189,11 +190,12 @@ function safe<T>(f: () => T, fallback: T): T {
 screenTime.diagnose = () => {
   const auth = safe(() => ScreenTime.getAuthorizationStatus(), -1);
   const token = safe(() => ScreenTime.getFamilyActivitySelectionId(SELECTION_ID), undefined);
-  const meta = token ? safe(() => ScreenTime.activitySelectionMetadata({ activitySelectionToken: token }), undefined) : undefined;
-  const picked = meta ? `${meta.applicationCount}/${meta.categoryCount}/${meta.webDomainCount}` : token ? '?' : '없음';
+  const meta = safe(() => ScreenTime.activitySelectionMetadata({ activitySelectionId: SELECTION_ID }), undefined);
+  const picked = `${meta ? `${meta.applicationCount}/${meta.categoryCount}/${meta.webDomainCount}` : '?'} 토큰${token ? token.length : '없음'}`;
   const shield = safe(() => (ScreenTime.isShieldActive() ? '켜짐' : '꺼짐'), '?');
   const monitors = safe(() => ScreenTime.getActivities().length, -1);
-  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}`;
+  const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 6), '?');
+  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors} · v${ota}`;
 };
 
 function pick(): AppBlocker {
