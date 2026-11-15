@@ -28,6 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ImageMagick
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+
       - name: Download
         run: curl -fsSL "$SRC_URL" -o "$RUNNER_TEMP/src.png" && identify "$RUNNER_TEMP/src.png"
 
