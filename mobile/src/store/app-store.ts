@@ -41,6 +41,8 @@ interface Actions {
   skipAhead(seconds: number): { exhausted: boolean };
   emergencyUnlock(): boolean;
   resetAll(): void;
+  /** Test helper: empty the balance (and lock the apps) without touching records. */
+  clearBalance(): void;
   /**
    * Real (OS) blocking: charge usage the OS reported since the last sync, then re-shield or
    * re-open the picked apps to match the balance. No-op on the simulated blocker.
@@ -129,6 +131,11 @@ export const useAppStore = create<AppState>()(
 
       resetAll: () => {
         set({ ...defaults, bank: emptyBank() });
+        void get().syncBlocker();
+      },
+
+      clearBalance: () => {
+        set({ bank: { ...endSession(get().bank, Date.now()), balanceSec: 0 }, blockerSince: 0 });
         void get().syncBlocker();
       },
 

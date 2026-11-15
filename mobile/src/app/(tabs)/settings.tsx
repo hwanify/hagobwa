@@ -100,6 +100,12 @@ export default function Settings() {
       </Card>
 
       <View style={{ marginTop: 28, gap: 8 }}>
+        <Button
+          variant="ghost"
+          label={s.bank.balanceSec > 0 ? '테스트: 잔고 0으로 만들기' : '테스트: 잔고가 0이에요'}
+          disabled={s.bank.balanceSec <= 0}
+          onPress={s.clearBalance}
+        />
         {confirmReset ? (
           <>
             <T style={{ color: colors.red, fontWeight: '700' }}>잔고, 운동 기록, 설정이 모두 지워져요.</T>
