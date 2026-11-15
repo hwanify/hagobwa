@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, StyleSheet } from 'react-native';
 import * as ScreenTime from 'react-native-device-activity';
-import { DeviceActivitySelectionSheetViewPersisted } from 'react-native-device-activity';
+import { DeviceActivitySelectionSheetView } from 'react-native-device-activity';
 import { create } from 'zustand';
 
 import { blocker, SELECTION_ID } from '@/platform/blocker';
@@ -73,13 +73,18 @@ export function removePicked(item: PickedItem): void {
 /**
  * Apple's app picker (iOS Screen Time). It opens with the current selection already ticked,
  * so "edit" adds or removes without losing what was there. Needs authorization first.
+ *
+ * We save the result ourselves instead of letting the native "persisted" picker do it: that
+ * one saves on a timer as it mounts and could overwrite the saved apps with an empty picker.
  */
 export function useLockPicker() {
   const rev = useSelectionRev((s) => s.rev);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const count = useMemo(pickedCount, [rev]);
-  const [visible, setVisible] = useState(false);
+  const [session, setSession] = useState<{ initial: string | null; openedAt: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Latest selection the sheet reported in this session (undefined = nothing reported). */
+  const pending = useRef<string | null | undefined>(undefined);
   /** Last thing the native picker reported, shown in the diagnostics line. */
   const [lastEvent, setLastEvent] = useState('없음');
   /** True once the picker was opened and closed at least once. */
@@ -87,40 +92,67 @@ export function useLockPicker() {
 
   const open = useCallback(async () => {
     const ok = await blocker.requestAuthorization();
-    if (ok) setVisible(true);
-    return ok;
+    if (!ok) return false;
+    pending.current = undefined;
+    let initial: string | null = null;
+    try {
+      initial = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID) ?? null;
+    } catch {
+      initial = null;
+    }
+    setSession({ initial, openedAt: Date.now() });
+    return true;
   }, []);
 
   const close = useCallback(() => {
-    // Keep the (invisible) native view mounted for a moment: it saves the selection on a short
-    // debounce after Apple's sheet closes, and unmounting right away drops that save.
     setLastEvent((e) => `${e} · 닫힘`);
     setSaving(true);
+    // The sheet reports its final selection a moment after it closes (short native debounce).
     setTimeout(() => {
-      setVisible(false);
+      const next = pending.current;
+      const before = session?.initial ?? null;
+      if (next !== undefined && next !== before) {
+        try {
+          if (next) {
+            ScreenTime.setFamilyActivitySelectionId({ id: SELECTION_ID, familyActivitySelection: next });
+          } else if (before) {
+            // Everything unticked on purpose: store an empty selection.
+            ScreenTime.difference(
+              { activitySelectionToken: before },
+              { activitySelectionToken: before },
+              { persistAsActivitySelectionId: SELECTION_ID },
+            );
+          }
+        } catch {
+          // Keep what was saved before.
+        }
+      }
+      setSession(null);
       setSaving(false);
       setClosedOnce(true);
       selectionChanged();
-    }, 1200);
-  }, []);
+    }, 700);
+  }, [session]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!session) return;
     // Safety net: if the sheet somehow never reports closing, don't stay mounted forever.
-    const id = setTimeout(() => setVisible(false), 10 * 60_000);
+    const id = setTimeout(() => setSession(null), 10 * 60_000);
     return () => clearTimeout(id);
-  }, [visible]);
+  }, [session]);
 
-  const element = visible ? (
-    <DeviceActivitySelectionSheetViewPersisted
+  const element = session ? (
+    <DeviceActivitySelectionSheetView
       style={styles.anchor}
-      familyActivitySelectionId={SELECTION_ID}
-      // Required for the native view to load the saved selection; without it the sheet opens
-      // empty and picking one app silently replaces everything that was locked.
-      includeEntireCategory
+      {...(session.initial ? { familyActivitySelection: session.initial } : {})}
       onSelectionChange={(e) => {
         const m = e.nativeEvent;
         setLastEvent(`앱${m.applicationCount ?? '?'}/분류${m.categoryCount ?? '?'}/웹${m.webDomainCount ?? '?'}`);
+        const token = m.familyActivitySelection ?? null;
+        // The sheet echoes its starting state as it mounts; an empty echo right after opening
+        // is not the user clearing everything.
+        if (!token && Date.now() - session.openedAt < 800) return;
+        pending.current = token;
       }}
       onDismissRequest={close}
     />
