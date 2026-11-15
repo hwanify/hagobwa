@@ -40,7 +40,11 @@ jobs:
             exit 1
           fi
           if [ -z "$ASC_APP_ID" ]; then
-            echo "::error::Repository variable ASC_APP_ID is missing (App Store Connect > 앱 > 앱 정보 > Apple ID). See docs/IOS_TESTFLIGHT.md"
+            ASC_APP_ID=$(jq -r '.submit.production.ios.ascAppId // empty' eas.json)
+            echo "ASC_APP_ID=$ASC_APP_ID" >> "$GITHUB_ENV"
+          fi
+          if [ -z "$ASC_APP_ID" ]; then
+            echo "::error::ASC_APP_ID is missing (App Store Connect > 앱 > 앱 정보 > Apple ID). See docs/IOS_TESTFLIGHT.md"
             exit 1
           fi
 
@@ -66,7 +70,7 @@ jobs:
         run: |
           jq --arg app "$ASC_APP_ID" --arg path "$RUNNER_TEMP/asc_key.p8" \
              --arg kid "$EXPO_ASC_KEY_ID" --arg iss "$EXPO_ASC_ISSUER_ID" \
-             '.submit.production.ios = {ascAppId: $app, ascApiKeyPath: $path, ascApiKeyId: $kid, ascApiKeyIssuerId: $iss}' \
+             '.submit.production.ios += {ascAppId: $app, ascApiKeyPath: $path, ascApiKeyId: $kid, ascApiKeyIssuerId: $iss}' \
              eas.json > eas.tmp.json && mv eas.tmp.json eas.json
 
       - name: Upload to TestFlight
