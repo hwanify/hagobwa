@@ -144,15 +144,18 @@ export function Segmented<T extends string>({
   value,
   onChange,
   stretch,
+  plain,
 }: {
   options: { id: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   /** Fill the available width, items sharing it equally. */
   stretch?: boolean;
+  /** No grey track behind the options; only the active one is filled. */
+  plain?: boolean;
 }) {
   return (
-    <View style={[styles.segment, stretch && { alignSelf: 'stretch' }]}>
+    <View style={[styles.segment, stretch && { alignSelf: 'stretch' }, plain && { backgroundColor: 'transparent', padding: 0, gap: 4 }]}>
       {options.map((o) => {
         const active = o.id === value;
         return (

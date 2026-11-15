@@ -14,10 +14,11 @@ import { colors } from '@/theme';
 export const SERIES = { pushup: colors.red, squat: '#F0989A' } as const;
 
 /**
- * Month heatmap ramp, drawn on a grey (colors.ground) card: no reps → most reps.
+ * Month heatmap ramp on the page background: no reps → most reps.
  * One hue, light → dark, with clear steps so the grid reads crisp rather than washed out.
  */
-const HEAT = [colors.paper, '#F2B4B6', '#E9797C', colors.red, '#A82A30'];
+const EMPTY = '#E9EAE4';
+const HEAT = [EMPTY, '#F2B4B6', '#E9797C', colors.red, '#A82A30'];
 
 function heatLevel(reps: number): number {
   if (reps <= 0) return 0;
@@ -76,7 +77,7 @@ export function SplitBar({ pushup, squat, height = 10, widthPct = 100 }: { pushu
   );
 }
 
-/** This week, one row per weekday (Mon..Sun): split bar + total. Meant to sit inside a Card. */
+/** This week, one row per weekday (Mon..Sun): split bar + total. */
 export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
   const max = Math.max(1, ...days.map((d) => d.pushup + d.squat));
   return (
@@ -109,7 +110,7 @@ export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
 }
 
 /**
- * Month heatmap (Mon-first), meant to sit inside a Card: one rounded square per elapsed day,
+ * Month heatmap (Mon-first): one rounded square per elapsed day,
  * darker = more reps. Future days are left blank. A small dot marks today (red) or the
  * selected day (ink).
  */
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
   weekRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 34 },
   weekDay: { width: 18, fontSize: 14, fontWeight: '700', color: colors.ink },
   weekTrack: { flex: 1, justifyContent: 'center' },
-  weekEmpty: { height: 10, borderRadius: 5, backgroundColor: colors.paper },
+  weekEmpty: { height: 10, borderRadius: 5, backgroundColor: EMPTY },
   weekTotal: { width: 30, textAlign: 'right', fontSize: 14 },
   calRow: { flexDirection: 'row' },
   calHead: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', marginBottom: 6 },
