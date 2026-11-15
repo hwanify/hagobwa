@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppTile, Button, Divider, H1, Muted, Row, Screen, T } from '@/components/ui';
-import { FREE_LOCK_LIMIT, LOCKABLE_APPS, type AppId } from '@/core/apps';
+import { LOCKABLE_APPS, type AppId } from '@/core/apps';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors, radius } from '@/theme';
@@ -24,14 +24,7 @@ export default function Onboarding() {
 
   const toggle = (id: AppId) => {
     setNote('');
-    setApps((cur) => {
-      if (cur.includes(id)) return cur.filter((x) => x !== id);
-      if (cur.length >= FREE_LOCK_LIMIT) {
-        setNote(`무료 플랜은 앱 ${FREE_LOCK_LIMIT}개까지 잠글 수 있어요. 하나를 끄고 골라 주세요.`);
-        return cur;
-      }
-      return [...cur, id];
-    });
+    setApps((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   };
 
   const go = (next: number) => {
@@ -101,7 +94,7 @@ export default function Onboarding() {
       {step === 1 && (
         <View style={{ marginTop: 20 }}>
           <H1>무엇을 잠글까요?</H1>
-          <Muted style={{ marginTop: 8 }}>손이 먼저 가는 앱을 골라 주세요. 무료는 {FREE_LOCK_LIMIT}개까지예요.</Muted>
+          <Muted style={{ marginTop: 8 }}>손이 먼저 가는 앱을 모두 골라 주세요.</Muted>
           <View style={{ marginTop: 20 }}>
             {LOCKABLE_APPS.map((a, i) => {
               const on = apps.includes(a.id);

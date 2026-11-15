@@ -1,77 +1,105 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Mono, Muted, Row, Screen, T } from '@/components/ui';
 import { appById } from '@/core/apps';
 import { formatDuration } from '@/core/format';
-import { EXERCISE_LABEL, type ExerciseId } from '@/core/rates';
+import { EXERCISE_LABEL } from '@/core/rates';
 import { streakDays, todayReps } from '@/core/timebank';
+import { closeScreen, goHome } from '@/navigation';
 import { successFeedback } from '@/platform/feedback';
 import { useAppStore } from '@/store/app-store';
 import { colors, radius } from '@/theme';
 
-export default function Done() {
-  const p = useLocalSearchParams<{ gain?: string; reps?: string; ex?: string; back?: string; first?: string }>();
-  const gain = Number(p.gain) || 0;
-  const reps = Number(p.reps) || 0;
-  const exercise = (p.ex === 'squat' ? 'squat' : 'pushup') as ExerciseId;
-  const backApp = p.back ? appById(p.back) : undefined;
+function formatWhen(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
+/**
+ * Charge receipt.
+ *  - Right after a workout: /done?id=<record>&fresh=1[&back=<app>][&added=<sec>]
+ *  - From the history list: /done?id=<record>
+ */
+export default function Done() {
+  const p = useLocalSearchParams<{ id?: string; fresh?: string; back?: string; added?: string; first?: string }>();
+  const fresh = p.fresh === '1';
   const bank = useAppStore((s) => s.bank);
   const openApp = useAppStore((s) => s.openApp);
+  const record = bank.workouts.find((w) => w.id === p.id);
+  const backApp = fresh && p.back ? appById(p.back) : undefined;
   const [shareNote, setShareNote] = useState('');
-  const now = Date.now();
-  const today = todayReps(bank, now);
-  const streak = streakDays(bank, now);
 
   useEffect(() => {
-    successFeedback();
-  }, []);
+    if (fresh) successFeedback();
+  }, [fresh]);
+
+  if (!record) {
+    return (
+      <Screen footer={<Button label="닫기" onPress={closeScreen} />}>
+        <Muted style={{ marginTop: 40, textAlign: 'center' }}>이 충전 기록을 찾을 수 없어요.</Muted>
+      </Screen>
+    );
+  }
+
+  const added = p.added !== undefined ? Number(p.added) : record.earnedSec;
+  const capped = fresh && added < record.earnedSec;
+  const now = Date.now();
+  const streak = streakDays(bank, now);
+  const dayReps = todayReps(bank, record.at);
 
   const share = async () => {
-    const message = `오늘 ${EXERCISE_LABEL[exercise]} 포함 운동 ${today}회 하고 ${formatDuration(gain)} 벌었어요. ${streak}일 연속 중! #하고봐`;
+    const message = `${EXERCISE_LABEL[record.exercise]} ${record.reps}회 하고 ${formatDuration(record.earnedSec)} 벌었어요. ${streak}일 연속 중! #하고봐`;
     try {
       await Share.share({ message });
     } catch {
-      setShareNote('이 브라우저는 공유를 지원하지 않아요. 앱에서는 카카오톡 공유 창이 열려요.');
+      setShareNote('이 기기에서는 공유를 열 수 없어요.');
     }
   };
 
   const goBackToApp = () => {
-    if (backApp && openApp(backApp.id)) {
-      router.replace({ pathname: '/session', params: { app: backApp.id } });
-    } else {
-      router.replace('/');
-    }
+    if (backApp && openApp(backApp.id)) router.replace({ pathname: '/session', params: { app: backApp.id } });
+    else goHome();
   };
 
+  const footer = fresh ? (
+    backApp ? (
+      <Button label={`${backApp.name} 보러 가기`} onPress={goBackToApp} icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />} />
+    ) : (
+      <Button label="홈으로" onPress={goHome} />
+    )
+  ) : (
+    <Button variant="quiet" label="닫기" onPress={closeScreen} />
+  );
+
   return (
-    <Screen
-      footer={
-        backApp ? (
-          <Button label={`${backApp.name} 보러 가기`} onPress={goBackToApp} icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />} />
-        ) : (
-          <Button label="홈으로" onPress={() => router.replace('/')} />
-        )
-      }
-    >
-      <Muted style={{ marginTop: 16, fontWeight: '600' }}>{p.first === '1' ? '첫 충전 완료' : '충전 완료'}</Muted>
+    <Screen footer={footer}>
+      <Row style={{ justifyContent: 'space-between', marginTop: 16 }}>
+        <Muted style={{ fontWeight: '600' }}>{fresh ? (p.first === '1' ? '첫 충전 완료' : '충전 완료') : '충전 기록'}</Muted>
+        {!fresh && (
+          <Pressable accessibilityRole="button" accessibilityLabel="닫기" onPress={closeScreen} hitSlop={10}>
+            <Ionicons name="close" size={22} color={colors.mute} />
+          </Pressable>
+        )}
+      </Row>
 
       <View style={styles.ticket}>
         <View style={[styles.notch, { left: -12 }]} />
         <View style={[styles.notch, { right: -12 }]} />
         <Row style={{ justifyContent: 'space-between' }}>
           <T style={styles.ticketSmall}>하고봐 시간카드</T>
-          <T style={styles.ticketSmall}>
-            {EXERCISE_LABEL[exercise]} {reps}회
-          </T>
+          <T style={styles.ticketSmall}>{formatWhen(record.at)}</T>
         </Row>
-        <Mono style={styles.gain}>+{formatDuration(gain)}</Mono>
-        {gain === 0 && <T style={styles.ticketSmall}>하루 최대치까지 모여서 더 쌓이지 않았어요.</T>}
+        <Mono style={styles.gain}>+{formatDuration(record.earnedSec)}</Mono>
+        <T style={styles.ticketSmall}>
+          {EXERCISE_LABEL[record.exercise]} {record.reps}회
+        </T>
+        {capped && <T style={[styles.ticketSmall, { marginTop: 6 }]}>하루 최대치라 {formatDuration(added)}만 쌓였어요.</T>}
         <Row style={styles.ticketFoot}>
-          <T style={{ color: colors.white }}>잔고</T>
+          <T style={{ color: colors.white }}>{fresh ? '지금 잔고' : '현재 잔고'}</T>
           <Mono style={{ color: colors.white }}>{formatDuration(bank.balanceSec)}</Mono>
         </Row>
       </View>
@@ -79,8 +107,8 @@ export default function Done() {
       <Card tone="ink" style={{ marginTop: 20 }}>
         <T style={{ color: 'rgba(247,247,243,0.6)', fontSize: 11, fontWeight: '600' }}>인증 카드 미리보기</T>
         <T style={{ color: colors.paper, fontSize: 17, fontWeight: '800', marginTop: 8, lineHeight: 24 }}>
-          오늘 운동 {today}회 하고{'\n'}
-          {formatDuration(gain)} 벌었어요
+          그날 운동 {dayReps}회 하고{'\n'}
+          {formatDuration(record.earnedSec)} 벌었어요
         </T>
         <Row style={{ gap: 4, marginTop: 4 }}>
           <Ionicons name="flame" size={13} color={colors.red} />
@@ -100,13 +128,7 @@ export default function Done() {
 }
 
 const styles = StyleSheet.create({
-  ticket: {
-    marginTop: 12,
-    backgroundColor: colors.red,
-    borderRadius: radius.lg,
-    padding: 20,
-    overflow: 'hidden',
-  },
+  ticket: { marginTop: 12, backgroundColor: colors.red, borderRadius: radius.lg, padding: 20, overflow: 'hidden' },
   notch: { position: 'absolute', top: '50%', width: 24, height: 24, marginTop: -12, borderRadius: 12, backgroundColor: colors.paper },
   ticketSmall: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
   gain: { color: colors.white, fontSize: 52, letterSpacing: -2, marginTop: 14 },

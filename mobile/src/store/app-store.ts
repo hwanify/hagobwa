@@ -29,8 +29,8 @@ export interface Settings {
 interface Actions {
   completeOnboarding(input: { goalHours: number; lockedApps: AppId[] }): void;
   updateSettings(patch: Partial<Settings>): void;
-  /** Returns the seconds actually added to the balance. */
-  logWorkout(exercise: ExerciseId, reps: number): number;
+  /** Saves the workout. Returns its record id and the seconds actually added to the balance. */
+  logWorkout(exercise: ExerciseId, reps: number): { id: string; earnedSec: number } | null;
   openApp(appId: AppId): boolean;
   tickSession(): { exhausted: boolean };
   closeApp(): void;
@@ -63,7 +63,7 @@ export const useAppStore = create<AppState>()(
 
       logWorkout: (exercise, reps) => {
         const s = get();
-        if (reps <= 0) return 0;
+        if (reps <= 0) return null;
         const r = creditWorkout(s.bank, {
           exercise,
           reps,
@@ -72,7 +72,7 @@ export const useAppStore = create<AppState>()(
           capSec: capFor(s.goalHours),
         });
         set({ bank: r.state });
-        return r.earnedSec;
+        return { id: r.record.id, earnedSec: r.earnedSec };
       },
 
       openApp: (appId) => {

@@ -3,8 +3,10 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppTile, Button, Card, Divider, Mono, Muted, Ring, Row, Screen, T } from '@/components/ui';
+import { openCharge } from '@/components/charge-history';
 import { appById, type AppId } from '@/core/apps';
 import { formatDuration, minutesOf } from '@/core/format';
+import { EXERCISE_LABEL } from '@/core/rates';
 import { capFor, streakDays, todayReps } from '@/core/timebank';
 import { blocker } from '@/platform/blocker';
 import { useAppStore, useNow } from '@/store/app-store';
@@ -20,6 +22,7 @@ export default function Home() {
   const balance = bank.balanceSec;
   const streak = streakDays(bank, now);
   const reps = todayReps(bank, now);
+  const last = bank.workouts.reduce<(typeof bank.workouts)[number] | undefined>((a, w) => (!a || w.at > a.at ? w : a), undefined);
 
   const onApp = (id: AppId) => {
     if (openApp(id)) router.push({ pathname: '/session', params: { app: id } });
@@ -69,6 +72,17 @@ export default function Home() {
         onPress={() => router.push('/workout')}
       />
 
+      {last && (
+        <Pressable accessibilityRole="button" onPress={() => openCharge(last.id)} style={styles.lastCharge}>
+          <Ionicons name="receipt-outline" size={18} color={colors.ink} />
+          <T style={{ flex: 1, fontWeight: '600' }}>
+            최근 충전 · {EXERCISE_LABEL[last.exercise]} {last.reps}회
+          </T>
+          <Mono style={{ color: colors.red }}>+{formatDuration(last.earnedSec)}</Mono>
+          <Ionicons name="chevron-forward" size={16} color={colors.mute} />
+        </Pressable>
+      )}
+
       <Row style={{ justifyContent: 'space-between', marginTop: 24, marginBottom: 4 }}>
         <T style={{ fontSize: 15, fontWeight: '700' }}>잠긴 앱 {locked.length}</T>
         <Muted style={{ fontSize: 12 }}>눌러서 열어보기</Muted>
@@ -106,4 +120,15 @@ const styles = StyleSheet.create({
   streak: { gap: 4, backgroundColor: colors.ground, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 2 },
   appRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  lastCharge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
 });

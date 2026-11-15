@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Card, H1, Mono, Muted, Row, Screen, T } from '@/components/ui';
+import { H1, Mono, Muted, Row, Screen, T } from '@/components/ui';
 import { weekReps } from '@/core/timebank';
 import { useAppStore, useNow } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -41,10 +41,6 @@ export default function Crew() {
         <T style={{ fontWeight: '700' }}>순위 올리러 가기</T>
         <Ionicons name="chevron-forward" size={18} color={colors.ink} />
       </Pressable>
-      <Card tone="ink" style={{ marginTop: 16 }}>
-        <T style={{ color: colors.paper, fontWeight: '700', fontSize: 15 }}>친구 초대하면 프리미엄 1주</T>
-        <T style={{ color: 'rgba(247,247,243,0.7)', fontSize: 12, marginTop: 4 }}>초대받은 친구도 똑같이 받아요.</T>
-      </Card>
       <Muted style={{ fontSize: 12, marginTop: 16 }}>
         지금은 예시 크루예요. 내 기록은 실제 운동량이고, 친구 연결은 서버가 붙으면 열려요.
       </Muted>

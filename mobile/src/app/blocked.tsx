@@ -7,6 +7,7 @@ import { Button, Screen, T } from '@/components/ui';
 import { appById } from '@/core/apps';
 import { repsNeeded } from '@/core/rates';
 import { emergencyLeft, EMERGENCY_WAIT_SEC, todayReps } from '@/core/timebank';
+import { closeScreen } from '@/navigation';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
@@ -38,7 +39,6 @@ export default function Blocked() {
     return () => clearTimeout(id);
   }, [wait, emergencyUnlock, openApp, target.id]);
 
-  const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   return (
     <Screen
@@ -69,7 +69,7 @@ export default function Blocked() {
         </View>
       }
     >
-      <Pressable accessibilityRole="button" accessibilityLabel="닫기" onPress={close} style={styles.close}>
+      <Pressable accessibilityRole="button" accessibilityLabel="닫기" onPress={closeScreen} style={styles.close}>
         <Ionicons name="close" size={22} color={colors.white} />
       </Pressable>
       <View style={styles.center}>

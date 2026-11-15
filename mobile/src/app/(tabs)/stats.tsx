@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Divider, H1, Mono, Muted, Row, Screen, T } from '@/components/ui';
+import { ChargeHistory } from '@/components/charge-history';
+import { Divider, H1, H2, Mono, Muted, Row, Screen, T } from '@/components/ui';
 import { addDays, startOfDay, startOfWeek, WEEKDAY_LABELS } from '@/core/dates';
 import { formatDuration } from '@/core/format';
 import { streakDays, weekEarnedSec, weekReps, weekSeries, weekUsageSec } from '@/core/timebank';
@@ -66,6 +67,10 @@ export default function Stats() {
           </View>
         ))}
       </View>
+
+      <H2 style={{ marginTop: 28, marginBottom: 4 }}>충전 기록</H2>
+      <Muted style={{ fontSize: 12 }}>눌러서 충전 완료 카드를 다시 볼 수 있어요.</Muted>
+      <ChargeHistory workouts={bank.workouts} now={now} />
     </Screen>
   );
 }

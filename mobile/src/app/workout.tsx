@@ -8,6 +8,7 @@ import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
 import { repLine, VOICE_MODES } from '@/core/voice';
 import PoseCamera from '@/features/pose/PoseCamera';
+import { closeScreen, goHome } from '@/navigation';
 import { say, tapFeedback } from '@/platform/feedback';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -51,11 +52,12 @@ export default function Workout() {
   const finish = useCallback(() => {
     const reps = countRef.current;
     if (reps <= 0 || finishedRef.current) return;
+    const saved = logWorkout(exercise, reps);
+    if (!saved) return;
     finishedRef.current = true;
-    const gain = logWorkout(exercise, reps);
     router.replace({
       pathname: '/done',
-      params: { gain: String(gain), reps: String(reps), ex: exercise, back, first: first ? '1' : '' },
+      params: { id: saved.id, fresh: '1', added: String(saved.earnedSec), back, first: first ? '1' : '' },
     });
   }, [back, exercise, first, logWorkout]);
 
@@ -71,8 +73,8 @@ export default function Workout() {
   };
 
   const close = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
+    if (first) goHome();
+    else closeScreen();
   };
 
   const gainPreview = earnedSeconds(exercise, count, difficulty);

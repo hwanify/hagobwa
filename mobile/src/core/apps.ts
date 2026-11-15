@@ -17,8 +17,6 @@ export const LOCKABLE_APPS: LockableApp[] = [
   { id: 'x', name: 'X', glyph: 'X', androidPackage: 'com.twitter.android' },
 ];
 
-export const FREE_LOCK_LIMIT = 2;
-
 export function appById(id: string): LockableApp | undefined {
   return LOCKABLE_APPS.find((a) => a.id === id);
 }

@@ -5,6 +5,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { AppTile, Button, Mono, ProgressBar, Row, Screen, T } from '@/components/ui';
 import { appById } from '@/core/apps';
 import { formatClock } from '@/core/format';
+import { goHome } from '@/navigation';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
@@ -37,7 +38,7 @@ export default function Session() {
 
   const stop = () => {
     closeApp();
-    router.replace('/');
+    goHome();
   };
 
   const skip = () => {

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppTile, Button, Card, Chip, Divider, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
-import { FREE_LOCK_LIMIT, LOCKABLE_APPS, type AppId } from '@/core/apps';
+import { LOCKABLE_APPS, type AppId } from '@/core/apps';
 import { formatDuration } from '@/core/format';
 import { DIFFICULTIES, secondsPerRep } from '@/core/rates';
 import { VOICE_MODES } from '@/core/voice';
@@ -28,8 +28,6 @@ export default function Settings() {
     setNote('');
     if (s.lockedApps.includes(id)) {
       s.updateSettings({ lockedApps: s.lockedApps.filter((x) => x !== id) });
-    } else if (s.lockedApps.length >= FREE_LOCK_LIMIT) {
-      setNote(`무료 플랜은 ${FREE_LOCK_LIMIT}개까지예요. 프리미엄은 준비 중이에요.`);
     } else {
       s.updateSettings({ lockedApps: [...s.lockedApps, id] });
     }
