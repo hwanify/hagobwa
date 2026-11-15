@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Legend, MonthHeatmap, SERIES, SplitBar, WeekBars } from '@/components/charts';
+import { Legend, MonthHeatmap, SplitBar, WeekBars } from '@/components/charts';
 import { Card, Divider, H1, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { addDays, startOfDay, startOfWeek, WEEKDAY_LABELS } from '@/core/dates';
 import { formatDuration } from '@/core/format';
@@ -46,7 +46,7 @@ function Section({ title, right, children, first }: { title: string; right?: Rea
   );
 }
 
-/** One workout as a log entry: time, what was done (series dot), and the time it earned. */
+/** One workout as a log entry, text only: time, what was done, and the time it earned. */
 function RecordRow({ w, today }: { w: WorkoutRecord; today: number }) {
   return (
     <Pressable
@@ -56,7 +56,6 @@ function RecordRow({ w, today }: { w: WorkoutRecord; today: number }) {
       style={({ pressed }) => [styles.record, pressed && { opacity: 0.6 }]}
     >
       <Mono style={styles.recordTime}>{timeOf(w.at)}</Mono>
-      <View style={[styles.dot, { backgroundColor: SERIES[w.exercise] }]} />
       <T style={{ flex: 1, fontSize: 16, fontWeight: '600' }}>
         {EXERCISE_LABEL[w.exercise]} {w.reps}회
       </T>
@@ -97,17 +96,11 @@ function StatCards({ pushup, squat, earnedSec }: { pushup: number; squat: number
   return (
     <Row style={{ gap: 8 }}>
       <Card style={{ flex: 1 }}>
-        <Row style={{ gap: 6 }}>
-          <View style={[styles.dot, { backgroundColor: SERIES.pushup }]} />
-          <Muted style={{ fontSize: 12 }}>푸시업</Muted>
-        </Row>
+        <Muted style={{ fontSize: 12 }}>푸시업</Muted>
         <T style={styles.stat}>{pushup}회</T>
       </Card>
       <Card style={{ flex: 1 }}>
-        <Row style={{ gap: 6 }}>
-          <View style={[styles.dot, { backgroundColor: SERIES.squat }]} />
-          <Muted style={{ fontSize: 12 }}>스쿼트</Muted>
-        </Row>
+        <Muted style={{ fontSize: 12 }}>스쿼트</Muted>
         <T style={styles.stat}>{squat}회</T>
       </Card>
       <Card style={{ flex: 1 }}>
@@ -126,7 +119,10 @@ function DayBreakdown({ pushup, squat, earnedSec }: { pushup: number; squat: num
   return (
     <View style={{ gap: 14 }}>
       <StatCards pushup={pushup} squat={squat} earnedSec={earnedSec} />
-      <SplitBar pushup={pushup} squat={squat} height={10} />
+      <View style={{ gap: 8 }}>
+        <SplitBar pushup={pushup} squat={squat} height={10} />
+        <Legend />
+      </View>
     </View>
   );
 }
@@ -178,9 +174,6 @@ export default function Stats() {
         <Section title="요일별" right={<Legend />} first>
           <WeekBars days={dailyTotals(bank, weekStart, 7)} today={today} />
         </Section>
-        <Section title="운동 기록" right="눌러서 충전 카드 보기">
-          <RecordList logs={dayLogs(bank, weekStart, tomorrow)} today={today} />
-        </Section>
       </>
     );
   } else if (period === 'month') {
@@ -188,7 +181,6 @@ export default function Stats() {
     const activeDays = month.filter((d) => d.day <= today && d.pushup + d.squat > 0).length;
     const selDay = selectedDay ?? today;
     const sel = month.find((d) => d.day === selDay);
-    const selLog = sel ? dayLogs(bank, sel.day, addDays(sel.day, 1))[0] : undefined;
     body = (
       <>
         <Section title={`${nowDate.getFullYear()}년 ${nowDate.getMonth() + 1}월`} right={`${activeDays}일 운동`} first>
@@ -197,16 +189,6 @@ export default function Stats() {
         {sel && (
           <Section title={dayTitle(sel.day, today)}>
             <DayBreakdown pushup={sel.pushup} squat={sel.squat} earnedSec={sel.earnedSec} />
-            {selLog && (
-              <View style={{ marginTop: 8 }}>
-                {selLog.workouts.map((w, i) => (
-                  <View key={w.id}>
-                    {i > 0 && <Divider />}
-                    <RecordRow w={w} today={today} />
-                  </View>
-                ))}
-              </View>
-            )}
           </Section>
         )}
       </>
@@ -242,5 +224,4 @@ const styles = StyleSheet.create({
   stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   record: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
   recordTime: { width: 48, fontSize: 14, color: colors.mute },
-  dot: { width: 8, height: 8, borderRadius: 4 },
 });
