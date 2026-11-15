@@ -11,8 +11,8 @@ import { colors } from '@/theme';
  * also carried by the legend, 2px gaps between segments and direct total labels.
  */
 export const SERIES = { pushup: colors.red, squat: '#3F4248' } as const;
-/** Sequential ramp for the month heatmap: 0 reps → most reps (one hue, light → dark). */
-const HEAT = ['#E6E7E1', '#F8CFCF', '#F0989A', colors.red, '#A82A30'];
+/** Month heatmap ramp: no reps → most reps (one hue, light → dark). */
+const HEAT = [colors.ground, '#F6D3D3', '#EE9B9D', colors.red, '#A82A30'];
 
 function heatLevel(reps: number): number {
   if (reps <= 0) return 0;
@@ -22,24 +22,26 @@ function heatLevel(reps: number): number {
   return 4;
 }
 
+/** Compact legend, sized like the other secondary labels in the app. */
 export function Legend() {
   return (
     <View style={styles.legend}>
       <View style={styles.legendItem}>
         <View style={[styles.swatch, { backgroundColor: SERIES.pushup }]} />
-        <T style={styles.legendText}>푸시업</T>
+        <Muted style={styles.legendText}>푸시업</Muted>
       </View>
       <View style={styles.legendItem}>
         <View style={[styles.swatch, { backgroundColor: SERIES.squat }]} />
-        <T style={styles.legendText}>스쿼트</T>
+        <Muted style={styles.legendText}>스쿼트</Muted>
       </View>
     </View>
   );
 }
 
 /** Two-segment bar (push-ups then squats) with a 2px gap and rounded outer ends. */
-export function SplitBar({ pushup, squat, height = 22, widthPct = 100 }: { pushup: number; squat: number; height?: number; widthPct?: number }) {
+export function SplitBar({ pushup, squat, height = 10, widthPct = 100 }: { pushup: number; squat: number; height?: number; widthPct?: number }) {
   if (pushup + squat === 0) return null;
+  const r = height / 2;
   return (
     <View style={{ flexDirection: 'row', gap: pushup && squat ? 2 : 0, height, width: `${widthPct}%` }}>
       {pushup > 0 && (
@@ -47,10 +49,10 @@ export function SplitBar({ pushup, squat, height = 22, widthPct = 100 }: { pushu
           style={{
             flex: pushup,
             backgroundColor: SERIES.pushup,
-            borderTopLeftRadius: 4,
-            borderBottomLeftRadius: 4,
-            borderTopRightRadius: squat ? 0 : 4,
-            borderBottomRightRadius: squat ? 0 : 4,
+            borderTopLeftRadius: r,
+            borderBottomLeftRadius: r,
+            borderTopRightRadius: squat ? 0 : r,
+            borderBottomRightRadius: squat ? 0 : r,
           }}
         />
       )}
@@ -59,10 +61,10 @@ export function SplitBar({ pushup, squat, height = 22, widthPct = 100 }: { pushu
           style={{
             flex: squat,
             backgroundColor: SERIES.squat,
-            borderTopRightRadius: 4,
-            borderBottomRightRadius: 4,
-            borderTopLeftRadius: pushup ? 0 : 4,
-            borderBottomLeftRadius: pushup ? 0 : 4,
+            borderTopRightRadius: r,
+            borderBottomRightRadius: r,
+            borderTopLeftRadius: pushup ? 0 : r,
+            borderBottomLeftRadius: pushup ? 0 : r,
           }}
         />
       )}
@@ -70,45 +72,42 @@ export function SplitBar({ pushup, squat, height = 22, widthPct = 100 }: { pushu
   );
 }
 
-/** This week, one row per weekday (Mon..Sun): split bar + total. No axes. */
-export function WeekBars({ days, today, onPressDay }: { days: DayTotal[]; today: number; onPressDay?: (d: DayTotal) => void }) {
+/** This week, one row per weekday (Mon..Sun): thin split bar + total. No axes, no boxes. */
+export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
   const max = Math.max(1, ...days.map((d) => d.pushup + d.squat));
   return (
-    <View>
+    <View style={{ gap: 4 }}>
       {days.map((d, i) => {
         const total = d.pushup + d.squat;
         const isToday = d.day === today;
         const future = d.day > today;
-        const date = new Date(d.day);
         return (
-          <Pressable
+          <View
             key={d.day}
-            accessibilityRole="button"
+            accessible
             accessibilityLabel={`${WEEKDAY_LABELS[i]}요일 푸시업 ${d.pushup}회 스쿼트 ${d.squat}회`}
-            disabled={!onPressDay || total === 0}
-            onPress={() => onPressDay?.(d)}
-            style={[styles.weekRow, isToday && styles.weekRowToday]}
+            style={styles.weekRow}
           >
-            <View style={{ width: 48 }}>
-              <T style={{ fontSize: 17, fontWeight: '800' }}>{WEEKDAY_LABELS[i]}</T>
-              <Muted style={{ fontSize: 12, fontWeight: '700' }}>{isToday ? '오늘' : `${date.getMonth() + 1}/${date.getDate()}`}</Muted>
-            </View>
-            <View style={{ flex: 1 }}>
+            <T style={[styles.weekDay, isToday ? { color: colors.red } : future ? { color: colors.line } : null]}>{WEEKDAY_LABELS[i]}</T>
+            <View style={styles.weekTrack}>
               {total > 0 ? (
                 <SplitBar pushup={d.pushup} squat={d.squat} widthPct={(total / max) * 100} />
               ) : (
-                <Muted style={{ fontSize: 15, fontWeight: '700', color: '#8A8D93' }}>{future ? '' : '쉬는 날'}</Muted>
+                <View style={[styles.weekEmpty, future && { opacity: 0.4 }]} />
               )}
             </View>
-            <Mono style={{ width: 44, textAlign: 'right', fontSize: 17 }}>{total || ''}</Mono>
-          </Pressable>
+            <Mono style={[styles.weekTotal, !total && { color: colors.line }]}>{total || '-'}</Mono>
+          </View>
         );
       })}
     </View>
   );
 }
 
-/** Month calendar heatmap (Mon-first). Darker = more reps; today outlined; future days dashed. */
+/**
+ * Month heatmap (Mon-first): one rounded square per day, darker = more reps.
+ * No numbers or outlines. Today and the selected day get a small dot underneath.
+ */
 export function MonthHeatmap({
   days,
   today,
@@ -128,23 +127,22 @@ export function MonthHeatmap({
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 4 }}>
       <View style={styles.calRow}>
         {WEEKDAY_LABELS.map((w) => (
-          <T key={w} style={styles.calHead}>
+          <Muted key={w} style={styles.calHead}>
             {w}
-          </T>
+          </Muted>
         ))}
       </View>
       {weeks.map((week, wi) => (
         <View key={wi} style={styles.calRow}>
           {week.map((d, di) => {
-            if (!d) return <View key={di} style={styles.calCell} />;
+            if (!d) return <View key={di} style={styles.calSlot} />;
             const total = d.pushup + d.squat;
             const future = d.day > today;
-            const lv = heatLevel(total);
-            const dark = !future && lv >= 3;
             const isSel = selected === d.day;
+            const isToday = d.day === today;
             return (
               <Pressable
                 key={di}
@@ -153,14 +151,15 @@ export function MonthHeatmap({
                 accessibilityState={{ selected: isSel }}
                 disabled={future}
                 onPress={() => onSelect(d)}
-                style={[
-                  styles.calCell,
-                  future ? styles.calFuture : { backgroundColor: HEAT[lv] },
-                  d.day === today && styles.calToday,
-                  isSel && d.day !== today && styles.calSelected,
-                ]}
+                style={styles.calSlot}
               >
-                <T style={[styles.calDay, { color: future ? '#8A8D93' : dark ? colors.white : colors.ink }]}>{new Date(d.day).getDate()}</T>
+                <View style={[styles.calSquare, { backgroundColor: HEAT[future ? 0 : heatLevel(total)] }, future && { opacity: 0.45 }]} />
+                <View
+                  style={[
+                    styles.calDot,
+                    { backgroundColor: isToday ? colors.red : isSel ? colors.ink : 'transparent' },
+                  ]}
+                />
               </Pressable>
             );
           })}
@@ -178,20 +177,21 @@ export function MonthHeatmap({
 }
 
 const styles = StyleSheet.create({
-  legend: { flexDirection: 'row', gap: 16 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatch: { width: 12, height: 12, borderRadius: 4 },
-  legendText: { fontSize: 15, fontWeight: '700', color: '#3F4248' },
-  weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 12 },
-  weekRowToday: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line },
-  calRow: { flexDirection: 'row', gap: 6 },
-  calHead: { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: '#3F4248' },
-  calCell: { flex: 1, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  calFuture: { borderWidth: 1, borderStyle: 'dashed', borderColor: colors.line, backgroundColor: colors.white },
-  calToday: { borderWidth: 3, borderColor: colors.ink },
-  calSelected: { borderWidth: 2, borderColor: '#3F4248' },
-  calDay: { fontSize: 15, fontWeight: '700' },
-  heatLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 4 },
-  heatLegendText: { fontSize: 13, fontWeight: '700' },
-  heatSwatch: { width: 18, height: 18, borderRadius: 5 },
+  legend: { flexDirection: 'row', gap: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  swatch: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 12, fontWeight: '600' },
+  weekRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 36 },
+  weekDay: { width: 20, fontSize: 14, fontWeight: '700', color: colors.mute },
+  weekTrack: { flex: 1, justifyContent: 'center' },
+  weekEmpty: { height: 10, borderRadius: 5, backgroundColor: colors.ground },
+  weekTotal: { width: 32, textAlign: 'right', fontSize: 14 },
+  calRow: { flexDirection: 'row' },
+  calHead: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  calSlot: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 2 },
+  calSquare: { width: 30, height: 30, borderRadius: 9 },
+  calDot: { width: 4, height: 4, borderRadius: 2 },
+  heatLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 6 },
+  heatLegendText: { fontSize: 12, fontWeight: '600' },
+  heatSwatch: { width: 10, height: 10, borderRadius: 3 },
 });
