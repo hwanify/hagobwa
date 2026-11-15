@@ -8,6 +8,7 @@ import { formatDuration } from '@/core/format';
 import { DIFFICULTIES, secondsPerRep } from '@/core/rates';
 import { VOICE_MODES } from '@/core/voice';
 import { say } from '@/platform/feedback';
+import { useLockPicker } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -23,6 +24,7 @@ export default function Settings() {
   const s = useAppStore();
   const [note, setNote] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const picker = useLockPicker(() => void s.syncBlocker());
 
   const toggleApp = (id: AppId) => {
     setNote('');
@@ -71,7 +73,12 @@ export default function Settings() {
       </Pressable>
 
       <H2 style={styles.section}>잠글 앱</H2>
-      {LOCKABLE_APPS.map((a, i) => {
+      {blocker.kind === 'ios-screentime' ? (
+        <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow}>
+          <T>{picker.count > 0 ? `${picker.count}개 잠그는 중` : '아직 고르지 않았어요'}</T>
+          <T style={{ fontWeight: '700', color: colors.red }}>고르기</T>
+        </Pressable>
+      ) : LOCKABLE_APPS.map((a, i) => {
         const on = s.lockedApps.includes(a.id);
         return (
           <View key={a.id}>
@@ -84,6 +91,7 @@ export default function Settings() {
           </View>
         );
       })}
+      {picker.element}
       {note ? <T style={{ color: colors.red, fontWeight: '600', marginTop: 8 }}>{note}</T> : null}
 
       <Card style={{ marginTop: 24 }}>

@@ -5,7 +5,7 @@ import { ActivityIndicator, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useApplyOtaUpdate } from '@/platform/updates';
-import { useHydrated } from '@/store/app-store';
+import { useBlockerSync, useHydrated } from '@/store/app-store';
 import { colors } from '@/theme';
 
 const WEB_FONTS = [
@@ -16,6 +16,7 @@ const WEB_FONTS = [
 export default function RootLayout() {
   const hydrated = useHydrated();
   useApplyOtaUpdate();
+  useBlockerSync(hydrated);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;

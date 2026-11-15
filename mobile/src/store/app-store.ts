@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -8,6 +9,7 @@ import type { Difficulty, ExerciseId } from '@/core/rates';
 import {
   applyEmergency,
   capFor,
+  chargeScreenTime,
   creditWorkout,
   emptyBank,
   endSession,
@@ -16,6 +18,7 @@ import {
   type BankState,
 } from '@/core/timebank';
 import type { VoiceMode } from '@/core/voice';
+import { blocker } from '@/platform/blocker';
 
 export interface Settings {
   onboarded: boolean;
@@ -38,11 +41,22 @@ interface Actions {
   skipAhead(seconds: number): { exhausted: boolean };
   emergencyUnlock(): boolean;
   resetAll(): void;
+  /**
+   * Real (OS) blocking: charge usage the OS reported since the last sync, then re-shield or
+   * re-open the picked apps to match the balance. No-op on the simulated blocker.
+   */
+  syncBlocker(): Promise<void>;
 }
 
-export type AppState = Settings & { bank: BankState } & Actions;
+/** When the OS usage monitor was last (re)started, so its checkpoints can be charged once. */
+interface BlockerSync {
+  blockerSince: number;
+}
 
-const defaults: Settings & { bank: BankState } = {
+export type AppState = Settings & { bank: BankState } & BlockerSync & Actions;
+
+const defaults: Settings & { bank: BankState } & BlockerSync = {
+  blockerSince: 0,
   onboarded: false,
   goalHours: 2,
   lockedApps: ['youtube', 'instagram'],
@@ -57,7 +71,10 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       ...defaults,
 
-      completeOnboarding: ({ goalHours, lockedApps }) => set({ onboarded: true, goalHours, lockedApps }),
+      completeOnboarding: ({ goalHours, lockedApps }) => {
+        set({ onboarded: true, goalHours, lockedApps });
+        void get().syncBlocker();
+      },
 
       updateSettings: (patch) => set(patch),
 
@@ -72,6 +89,7 @@ export const useAppStore = create<AppState>()(
           capSec: capFor(s.goalHours),
         });
         set({ bank: r.state });
+        void get().syncBlocker();
         return { id: r.record.id, earnedSec: r.earnedSec };
       },
 
@@ -102,19 +120,38 @@ export const useAppStore = create<AppState>()(
       emergencyUnlock: () => {
         try {
           set({ bank: applyEmergency(get().bank, Date.now()) });
+          void get().syncBlocker();
           return true;
         } catch {
           return false;
         }
       },
 
-      resetAll: () => set({ ...defaults, bank: emptyBank() }),
+      resetAll: () => {
+        set({ ...defaults, bank: emptyBank() });
+        void get().syncBlocker();
+      },
+
+      syncBlocker: async () => {
+        if (blocker.kind === 'simulated') return;
+        const s = get();
+        const now = Date.now();
+        const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
+        const bank = chargeScreenTime(s.bank, used, now);
+        set({ bank, blockerSince: now });
+        try {
+          await blocker.apply(get().onboarded ? bank.balanceSec : 0);
+        } catch {
+          // Screen Time refused (e.g. permission revoked): keep the in-app balance as is.
+        }
+      },
     }),
     {
       name: 'hagobwa-v1',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank }) => ({
+      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince }) => ({
+        blockerSince,
         onboarded,
         goalHours,
         lockedApps,
@@ -126,6 +163,18 @@ export const useAppStore = create<AppState>()(
     },
   ),
 );
+
+/** Keep OS blocking in step with the balance: on launch and whenever the app comes back. */
+export function useBlockerSync(enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled || blocker.kind === 'simulated') return;
+    void useAppStore.getState().syncBlocker();
+    const sub = RNAppState.addEventListener('change', (st) => {
+      if (st === 'active') void useAppStore.getState().syncBlocker();
+    });
+    return () => sub.remove();
+  }, [enabled]);
+}
 
 /** True once persisted state has been loaded from storage. */
 export function useHydrated(): boolean {

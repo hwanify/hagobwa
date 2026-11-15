@@ -256,3 +256,31 @@ export function dailyTotals(state: BankState, from: number, days: number): DayTo
   }
   return out;
 }
+
+/* ---------- OS-level usage (iOS Screen Time) ---------- */
+
+/** Usage bucket for time spent in apps the OS blocker unlocked (iOS can't tell us which app). */
+export const SCREEN_TIME_APP = 'screentime';
+
+/**
+ * Usage checkpoints (in minutes) to report while apps are unlocked for `balanceSec`.
+ * Every minute for the first hour, then every 5 minutes, and always the exact end.
+ */
+export function usageCheckpoints(balanceSec: number): number[] {
+  const total = Math.floor(balanceSec / 60);
+  const out: number[] = [];
+  for (let m = 1; m <= total; m += m < 60 ? 1 : 5) out.push(m);
+  if (total > 0 && out[out.length - 1] !== total) out.push(total);
+  return out;
+}
+
+/** Charge minutes the OS reported as used (outside the app) against the balance. */
+export function chargeScreenTime(state: BankState, usedSec: number, now: number): BankState {
+  const charged = Math.min(Math.max(0, Math.floor(usedSec)), state.balanceSec);
+  if (charged === 0) return state;
+  return {
+    ...state,
+    balanceSec: state.balanceSec - charged,
+    usage: addUsage(state.usage, SCREEN_TIME_APP, now, charged),
+  };
+}

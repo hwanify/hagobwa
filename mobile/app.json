@@ -45,6 +45,12 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 96
         }
+      ],
+      [
+        "react-native-device-activity",
+        {
+          "appGroup": "group.com.hagobwa.app"
+        }
       ]
     ],
     "experiments": {

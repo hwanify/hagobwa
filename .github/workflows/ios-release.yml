@@ -78,6 +78,13 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc_key.p8"
           echo "EXPO_ASC_API_KEY_PATH=$RUNNER_TEMP/asc_key.p8" >> "$GITHUB_ENV"
 
+      - name: Share Apple Team ID with EAS (Screen Time extensions sign with it)
+        run: |
+          npx eas-cli env:set production --name APPLE_TEAM_ID --value "$EXPO_APPLE_TEAM_ID" \
+            --visibility sensitive --scope project --non-interactive \
+            || npx eas-cli env:create production --name APPLE_TEAM_ID --value "$EXPO_APPLE_TEAM_ID" \
+                 --visibility sensitive --force --non-interactive
+
       - name: Decide build or OTA
         id: decide
         run: |
@@ -106,6 +113,12 @@ jobs:
             --message "$MSG" --non-interactive
           echo "### OTA 업데이트 배포 완료: $MSG" >> "$GITHUB_STEP_SUMMARY"
           echo "앱을 껐다 켜면 적용돼요." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Signing for app + extensions (creates missing profiles, syncs capabilities)
+        if: steps.decide.outputs.kind == 'build'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq expect
+          env -u CI expect scripts/eas-ios-credentials.exp
 
       - name: Build on EAS (iOS, production)
         if: steps.decide.outputs.kind == 'build'

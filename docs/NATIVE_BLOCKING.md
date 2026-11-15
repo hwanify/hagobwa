@@ -46,3 +46,12 @@ interface AppBlocker {
 1. 웹에서 전체 흐름 확인 (지금 가능)
 2. EAS 클라우드 빌드로 안드로이드 개발 빌드 생성 (`npx eas-cli build --profile development --platform android`)
 3. 휴가/외출 때 실제 폰에 설치해서 잠금·배터리 이슈 확인
+
+## 현재 구현 (iOS, react-native-device-activity)
+
+- 온보딩: 스크린타임 권한 → 애플 앱 선택 화면(선택은 `hagobwa.locked` 로 기기에 저장, 하고봐는 어떤 앱인지 모름)
+- 잔고 1분 미만 → 고른 앱 잠금(빨간 잠금 화면, "하고봐에서 충전하면 열려요")
+- 충전하면 잠금 해제 + 사용량 모니터 시작. 1분(1시간 이후 5분)마다 체크포인트, 마지막 체크포인트에서 확장 프로그램이 스스로 다시 잠금 — 하고봐가 꺼져 있어도 동작
+- 하고봐를 열 때마다 쓴 시간만큼 잔고에서 빼고 다시 맞춤
+- 자정에는 iOS 사용량이 초기화되므로 일단 잠그고, 하고봐를 열면 남은 잔고로 다시 열림
+- Team ID는 GitHub 시크릿 APPLE_TEAM_ID → EAS 환경변수 → app.config.ts 로 들어감

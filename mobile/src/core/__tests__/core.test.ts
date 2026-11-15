@@ -275,3 +275,23 @@ describe('voice', () => {
     expect(repLine('basic', 25, 30)).toBe('25');
   });
 });
+
+describe('screen time usage', () => {
+  it('checks every minute for an hour, then every 5, ending exactly at the balance', async () => {
+    const { usageCheckpoints } = await import('../timebank');
+    expect(usageCheckpoints(30)).toEqual([]);
+    expect(usageCheckpoints(3 * 60)).toEqual([1, 2, 3]);
+    const long = usageCheckpoints(72 * 60);
+    expect(long.slice(58, 64)).toEqual([59, 60, 65, 70, 72]);
+  });
+
+  it('charges reported usage, never below zero', async () => {
+    const { chargeScreenTime, emptyBank, SCREEN_TIME_APP } = await import('../timebank');
+    const bank = { ...emptyBank(), balanceSec: 600 };
+    const now = Date.now();
+    const a = chargeScreenTime(bank, 240, now);
+    expect(a.balanceSec).toBe(360);
+    expect(Object.values(a.usage)[0][SCREEN_TIME_APP]).toBe(240);
+    expect(chargeScreenTime(a, 9999, now).balanceSec).toBe(0);
+  });
+});
