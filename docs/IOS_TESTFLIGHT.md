@@ -56,14 +56,18 @@ appstoreconnect.apple.com → 앱 → `+` → 신규 앱
 - 만든 뒤 **앱 정보 → Apple ID** (숫자 10자리)를 복사해서
   GitHub Variables 에 `ASC_APP_ID` 로 추가
 
-## 5단계. 빌드하고 TestFlight 올리기
+## 5단계. 배포 (자동)
 
-GitHub → Actions → **iOS TestFlight 배포** → Run workflow
+`main` 에 앱 코드가 올라가면 **iOS 배포 (자동 빌드/OTA)** 워크플로가 알아서 돌아요.
 
-- 테스트 → EAS 클라우드 빌드 (15~30분) → TestFlight 업로드까지 자동이에요.
-- 업로드 후 애플 처리 시간 10~30분이 지나면 App Store Connect → TestFlight 에 빌드가 보여요.
-- **내부 테스트** 그룹에 본인 Apple ID를 넣고, 폰에서 **TestFlight 앱**으로 설치하면 끝.
-- 다음부터는 5단계 버튼만 누르면 돼요. 빌드 번호는 자동으로 올라가요.
+| 바뀐 것 | 하는 일 | 폰에서 |
+|---|---|---|
+| 화면, 문구, 로직 등 JS 코드만 | **OTA 업데이트** (1~2분, 빌드·심사 없음) | 앱을 껐다 켜면 바로 적용 |
+| 새 라이브러리, 권한, app.json 네이티브 설정 | **새 빌드 + TestFlight 업로드** (10분 + 애플 처리) | TestFlight 앱에서 업데이트 |
+
+- 판단 기준: 앱의 네이티브 지문(fingerprint)이 이미 빌드된 버전과 같으면 OTA, 다르면 빌드.
+- 손으로 돌릴 때: Actions → **iOS 배포 (자동 빌드/OTA)** → Run workflow → `auto` / `build` / `update` 선택.
+- 결과는 실행 화면의 Summary 에 "OTA 업데이트 배포 완료" 또는 "새 빌드를 TestFlight에 올렸어요" 로 나와요.
 
 ## 참고
 

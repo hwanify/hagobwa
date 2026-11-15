@@ -7,7 +7,9 @@ import {
   applyEmergency,
   BankError,
   creditWorkout,
+  dayLogs,
   emergencyLeft,
+  exerciseTotals,
   emptyBank,
   EMERGENCY_GRANT_SEC,
   endSession,
@@ -123,6 +125,24 @@ describe('timebank', () => {
     s = creditWorkout(s, { exercise: 'squat', reps: 5, difficulty: 'normal', now: T0, capSec: CAP }).state;
     expect(streakDays(s, T0)).toBe(4);
     expect(streakDays(s, T0 + 2 * DAY)).toBe(0);
+  });
+
+  it('totals reps per exercise and groups by day', () => {
+    let s = emptyBank();
+    const add = (exercise: 'pushup' | 'squat', reps: number, at: number) =>
+      (s = creditWorkout(s, { exercise, reps, difficulty: 'normal', now: at, capSec: 10 * CAP }).state);
+    add('pushup', 10, T0 - DAY);
+    add('pushup', 15, T0);
+    add('squat', 20, T0 + 1000);
+    const totals = exerciseTotals(s, T0 - 2 * DAY, T0 + DAY);
+    expect(totals.pushup).toEqual({ reps: 25, sessions: 2, earnedSec: 1500 });
+    expect(totals.squat).toEqual({ reps: 20, sessions: 1, earnedSec: 600 });
+    expect(exerciseTotals(s, T0 - 1000, T0 + DAY).pushup.reps).toBe(15);
+    const logs = dayLogs(s, 0, T0 + DAY);
+    expect(logs).toHaveLength(2);
+    expect(logs[0].totals).toEqual({ pushup: 15, squat: 20 });
+    expect(logs[0].workouts[0].exercise).toBe('squat');
+    expect(logs[1].totals).toEqual({ pushup: 10, squat: 0 });
   });
 
   it('week series is Monday-first', () => {

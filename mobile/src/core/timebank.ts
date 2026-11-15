@@ -181,3 +181,52 @@ export function streakDays(state: BankState, now: number): number {
   }
   return n;
 }
+
+/* ---------- per-exercise breakdown ---------- */
+
+export interface ExerciseTotal {
+  reps: number;
+  sessions: number;
+  earnedSec: number;
+}
+
+export function exerciseTotals(state: BankState, from: number, to: number): Record<ExerciseId, ExerciseTotal> {
+  const out: Record<ExerciseId, ExerciseTotal> = {
+    pushup: { reps: 0, sessions: 0, earnedSec: 0 },
+    squat: { reps: 0, sessions: 0, earnedSec: 0 },
+  };
+  for (const w of state.workouts) {
+    if (w.at < from || w.at >= to) continue;
+    const t = out[w.exercise];
+    t.reps += w.reps;
+    t.sessions += 1;
+    t.earnedSec += w.earnedSec;
+  }
+  return out;
+}
+
+export interface DayLog {
+  /** Local midnight of the day. */
+  day: number;
+  totals: Record<ExerciseId, number>;
+  workouts: WorkoutRecord[];
+}
+
+/** Workouts in [from, to) grouped by local day, newest day first, newest workout first. */
+export function dayLogs(state: BankState, from: number, to: number): DayLog[] {
+  const byDay = new Map<number, DayLog>();
+  for (const w of state.workouts) {
+    if (w.at < from || w.at >= to) continue;
+    const day = startOfDay(w.at);
+    let log = byDay.get(day);
+    if (!log) {
+      log = { day, totals: { pushup: 0, squat: 0 }, workouts: [] };
+      byDay.set(day, log);
+    }
+    log.totals[w.exercise] += w.reps;
+    log.workouts.push(w);
+  }
+  const logs = [...byDay.values()].sort((a, b) => b.day - a.day);
+  for (const l of logs) l.workouts.sort((a, b) => b.at - a.at);
+  return logs;
+}

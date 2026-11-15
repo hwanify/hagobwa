@@ -13,7 +13,7 @@ type IconName = keyof typeof Ionicons.glyphMap;
 const ITEMS: { name: string; label: string; icon: IconName; iconOn: IconName }[] = [
   { name: 'index', label: '홈', icon: 'home-outline', iconOn: 'home' },
   { name: 'crew', label: '크루', icon: 'people-outline', iconOn: 'people' },
-  { name: 'stats', label: '기록', icon: 'bar-chart-outline', iconOn: 'bar-chart' },
+  { name: 'stats', label: '기록', icon: 'calendar-outline', iconOn: 'calendar' },
   { name: 'settings', label: '설정', icon: 'settings-outline', iconOn: 'settings' },
 ];
 

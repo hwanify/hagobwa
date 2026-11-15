@@ -37,6 +37,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       [
         "expo-splash-screen",
         {
@@ -60,6 +61,14 @@
         "projectId": "5e9eb89b-b3bf-4728-affa-34a5146f1086"
       }
     },
-    "owner": "hwanifys-team"
+    "owner": "hwanifys-team",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5e9eb89b-b3bf-4728-affa-34a5146f1086",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

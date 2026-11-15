@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppTile, Button, Card, Divider, Mono, Muted, Ring, Row, Screen, T } from '@/components/ui';
-import { openCharge } from '@/components/charge-history';
+import { openCharge } from '@/navigation';
 import { appById, type AppId } from '@/core/apps';
 import { formatDuration, minutesOf } from '@/core/format';
 import { EXERCISE_LABEL } from '@/core/rates';

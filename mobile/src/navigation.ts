@@ -14,3 +14,8 @@ export function closeScreen(): void {
   if (router.canGoBack()) router.back();
   else goHome();
 }
+
+/** Reopen a saved 충전 완료 card. */
+export function openCharge(id: string): void {
+  router.push({ pathname: '/done', params: { id } });
+}
