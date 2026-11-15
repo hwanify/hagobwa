@@ -47,18 +47,21 @@ interface Actions {
    * Real (OS) blocking: charge usage the OS reported since the last sync, then re-shield or
    * re-open the picked apps to match the balance. No-op on the simulated blocker.
    */
-  syncBlocker(): Promise<void>;
+  syncBlocker(opts?: { restart?: boolean }): Promise<void>;
 }
 
 /** When the OS usage monitor was last (re)started, so its checkpoints can be charged once. */
 interface BlockerSync {
   blockerSince: number;
+  /** Seconds of that monitor's usage already charged to the balance. */
+  blockerCharged: number;
 }
 
 export type AppState = Settings & { bank: BankState } & BlockerSync & Actions;
 
 const defaults: Settings & { bank: BankState } & BlockerSync = {
   blockerSince: 0,
+  blockerCharged: 0,
   onboarded: false,
   goalHours: 2,
   lockedApps: ['youtube', 'instagram'],
@@ -135,17 +138,28 @@ export const useAppStore = create<AppState>()(
       },
 
       clearBalance: () => {
-        set({ bank: { ...endSession(get().bank, Date.now()), balanceSec: 0 }, blockerSince: 0 });
+        set({ bank: { ...endSession(get().bank, Date.now()), balanceSec: 0 }, blockerSince: 0, blockerCharged: 0 });
         void get().syncBlocker();
       },
 
-      syncBlocker: async () => {
+      syncBlocker: async ({ restart = true } = {}) => {
         if (blocker.kind === 'simulated') return;
         const s = get();
         const now = Date.now();
+        // Usage is cumulative since the monitor started, so short sessions add up (30s + 30s = 1 min).
         const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
-        const bank = chargeScreenTime(s.bank, used, now);
-        set({ bank, blockerSince: now });
+        const bank = chargeScreenTime(s.bank, Math.max(0, used - s.blockerCharged), now);
+        // Restarting the monitor drops the partial minute in progress, so only restart when the
+        // balance changed (charge, emergency, picker) or the monitor is from before midnight
+        // (iOS resets usage then and shields the apps until we re-sync).
+        const midnight = new Date(now);
+        midnight.setHours(0, 0, 0, 0);
+        const stale = s.blockerSince < midnight.getTime();
+        if (!restart && !stale) {
+          set({ bank, blockerCharged: Math.max(s.blockerCharged, used) });
+          return;
+        }
+        set({ bank, blockerSince: now, blockerCharged: 0 });
         try {
           await blocker.apply(get().onboarded ? bank.balanceSec : 0);
         } catch {
@@ -157,8 +171,9 @@ export const useAppStore = create<AppState>()(
       name: 'hagobwa-v1',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince }) => ({
+      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince, blockerCharged }) => ({
         blockerSince,
+        blockerCharged,
         onboarded,
         goalHours,
         lockedApps,
@@ -175,9 +190,9 @@ export const useAppStore = create<AppState>()(
 export function useBlockerSync(enabled: boolean): void {
   useEffect(() => {
     if (!enabled || blocker.kind === 'simulated') return;
-    void useAppStore.getState().syncBlocker();
+    void useAppStore.getState().syncBlocker({ restart: false });
     const sub = RNAppState.addEventListener('change', (st) => {
-      if (st === 'active') void useAppStore.getState().syncBlocker();
+      if (st === 'active') void useAppStore.getState().syncBlocker({ restart: false });
     });
     return () => sub.remove();
   }, [enabled]);
