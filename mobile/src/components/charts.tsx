@@ -6,11 +6,12 @@ import type { DayTotal } from '@/core/timebank';
 import { colors } from '@/theme';
 
 /**
- * Chart colors. Push-ups = brand red, squats = ink.
- * Red vs ink passes the CVD (14.8) and normal-vision (30.7) separation checks; identity is
- * also carried by the legend, 2px gaps between segments and direct total labels.
+ * Chart colors. Push-ups = brand red, squats = a lighter red from the same family.
+ * Passes the CVD (15.5) and normal-vision (17.8) separation checks. The light red is under 3:1
+ * against the background, so identity is also carried by the legend, 2px gaps between
+ * segments and the visible totals.
  */
-export const SERIES = { pushup: colors.red, squat: '#3F4248' } as const;
+export const SERIES = { pushup: colors.red, squat: '#F0989A' } as const;
 /** Month heatmap ramp: no reps → most reps (one hue, light → dark). */
 const HEAT = [colors.ground, '#F6D3D3', '#EE9B9D', colors.red, '#A82A30'];
 
