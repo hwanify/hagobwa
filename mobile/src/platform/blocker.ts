@@ -57,6 +57,15 @@ export function monitorEndsAt(): number {
   return monitorUntil;
 }
 
+/** Saved in the App Group so diagnostics survive app restarts and OTA reloads. */
+function rememberMode(mode: typeof monitorMode, until: number) {
+  try {
+    ScreenTime.userDefaultsSet('hagobwaMonitor', { mode, until, at: Date.now() });
+  } catch {
+    // diagnostics only
+  }
+}
+
 function dateParts(d: Date) {
   return {
     year: d.getFullYear(),
@@ -188,6 +197,7 @@ const screenTime: AppBlocker = {
     ScreenTime.resetBlocks('hagobwa:sync');
     monitorUntil = 0;
     monitorMode = 'none';
+    rememberMode('none', 0);
     if (!token || !this.hasSelection()) return 0;
 
     const marks = usageCheckpoints(balanceSec);
@@ -236,6 +246,7 @@ const screenTime: AppBlocker = {
       );
       monitorUntil = end;
       monitorMode = 'week';
+      rememberMode('week', end);
       return end;
     } catch {
       // iOS refused the long window: fall back to a daily window (re-locks at midnight).
@@ -250,6 +261,7 @@ const screenTime: AppBlocker = {
     );
     monitorUntil = midnight.getTime();
     monitorMode = 'day';
+    rememberMode('day', monitorUntil);
     return monitorUntil;
   },
 };
@@ -276,8 +288,12 @@ screenTime.diagnose = () => {
   const lastText = last
     ? `${(last.triggeredBy ?? '?').replace('actions_for_', '확장:').replace('hagobwa.usage_', '')} ${last.blocklistAppCount ?? '?'}개 ${(last.blockedAt ?? '').slice(11, 19)}`
     : '없음';
+  const mon = safe(() => ScreenTime.userDefaultsGet<{ mode?: string; until?: number }>('hagobwaMonitor'), undefined);
+  const monText = mon?.mode
+    ? `${mon.mode}${mon.until ? ` ~${new Date(mon.until).getMonth() + 1}/${new Date(mon.until).getDate()} ${String(new Date(mon.until).getHours()).padStart(2, '0')}:${String(new Date(mon.until).getMinutes()).padStart(2, '0')}` : ''}`
+    : '기록없음';
   const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 6), '?');
-  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}(${monitorMode}) · 마지막잠금변경 ${lastText} · v${ota}`;
+  return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}(${monText}) · 마지막잠금변경 ${lastText} · v${ota}`;
 };
 
 function pick(): AppBlocker {
