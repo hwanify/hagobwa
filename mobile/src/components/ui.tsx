@@ -143,13 +143,16 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  stretch,
 }: {
   options: { id: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  /** Fill the available width, items sharing it equally. */
+  stretch?: boolean;
 }) {
   return (
-    <View style={styles.segment}>
+    <View style={[styles.segment, stretch && { alignSelf: 'stretch' }]}>
       {options.map((o) => {
         const active = o.id === value;
         return (
@@ -158,7 +161,7 @@ export function Segmented<T extends string>({
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             onPress={() => onChange(o.id)}
-            style={[styles.segmentItem, active && { backgroundColor: colors.ink }]}
+            style={[styles.segmentItem, stretch && { flex: 1, alignItems: 'center' }, active && { backgroundColor: colors.ink }]}
           >
             <Text style={[styles.text, styles.chipText, { color: active ? colors.paper : colors.mute }]}>{o.label}</Text>
           </Pressable>

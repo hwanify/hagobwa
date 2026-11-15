@@ -33,9 +33,9 @@ function timeOf(ms: number): string {
 }
 
 /** Section header in the same style as 홈's "잠긴 앱" row: bold title left, small label right. */
-function SectionHeader({ title, right }: { title: string; right?: ReactNode }) {
+function SectionHeader({ title, right, inCard }: { title: string; right?: ReactNode; inCard?: boolean }) {
   return (
-    <Row style={{ justifyContent: 'space-between', marginTop: 24, marginBottom: 8 }}>
+    <Row style={{ justifyContent: 'space-between', marginTop: inCard ? 0 : 24, marginBottom: inCard ? 12 : 4 }}>
       <T style={{ fontSize: 15, fontWeight: '700' }}>{title}</T>
       {typeof right === 'string' ? <Muted style={{ fontSize: 12 }}>{right}</Muted> : right}
     </Row>
@@ -88,8 +88,10 @@ export default function Stats() {
   if (period === 'week') {
     body = (
       <>
-        <SectionHeader title="요일별" right={<Legend />} />
-        <WeekBars days={dailyTotals(bank, weekStart, 7)} today={today} />
+        <Card style={styles.chartCard}>
+          <SectionHeader title="요일별" right={<Legend />} inCard />
+          <WeekBars days={dailyTotals(bank, weekStart, 7)} today={today} />
+        </Card>
         <SectionHeader title="운동 내역" right="눌러서 충전 카드 보기" />
         {dayLogs(bank, weekStart, to).map((log) => (
           <DayLogBlock key={log.day} log={log} today={today} />
@@ -104,35 +106,37 @@ export default function Stats() {
     const selLog = sel ? dayLogs(bank, sel.day, addDays(sel.day, 1))[0] : undefined;
     body = (
       <>
-        <SectionHeader title={`${nowDate.getMonth() + 1}월`} right={`${activeDays}일 운동`} />
-        <MonthHeatmap days={month} today={today} selected={selDay} onSelect={(d) => setSelectedDay(d.day)} />
-        {sel && (
-          <Card style={{ marginTop: 16, gap: 10 }}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Muted style={{ fontSize: 12, fontWeight: '600' }}>{dayTitle(sel.day, today)}</Muted>
-              {sel.earnedSec > 0 && <Mono style={{ fontSize: 14, color: colors.red }}>+{formatDuration(sel.earnedSec)}</Mono>}
-            </Row>
-            {sel.pushup + sel.squat > 0 ? (
-              <>
-                <Row style={{ gap: 20 }}>
-                  <View>
-                    <Muted style={{ fontSize: 12 }}>푸시업</Muted>
-                    <T style={styles.stat}>{sel.pushup}회</T>
-                  </View>
-                  <View>
-                    <Muted style={{ fontSize: 12 }}>스쿼트</Muted>
-                    <T style={styles.stat}>{sel.squat}회</T>
-                  </View>
-                </Row>
-                <SplitBar pushup={sel.pushup} squat={sel.squat} />
-              </>
-            ) : (
-              <Muted>운동 기록이 없는 날이에요.</Muted>
-            )}
-          </Card>
-        )}
+        <Card style={styles.chartCard}>
+          <SectionHeader title={`${nowDate.getFullYear()}년 ${nowDate.getMonth() + 1}월`} right={`${activeDays}일 운동`} inCard />
+          <MonthHeatmap days={month} today={today} selected={selDay} onSelect={(d) => setSelectedDay(d.day)} />
+          {sel && (
+            <View style={styles.daySummary}>
+              <Row style={{ justifyContent: 'space-between' }}>
+                <T style={{ fontSize: 15, fontWeight: '700' }}>{dayTitle(sel.day, today)}</T>
+                {sel.earnedSec > 0 && <Mono style={{ fontSize: 14, color: colors.red }}>+{formatDuration(sel.earnedSec)}</Mono>}
+              </Row>
+              {sel.pushup + sel.squat > 0 ? (
+                <>
+                  <SplitBar pushup={sel.pushup} squat={sel.squat} />
+                  <Row style={{ gap: 16 }}>
+                    <Row style={{ gap: 6 }}>
+                      <View style={[styles.logDot, { backgroundColor: SERIES.pushup }]} />
+                      <T style={{ fontSize: 14, fontWeight: '600' }}>푸시업 {sel.pushup}회</T>
+                    </Row>
+                    <Row style={{ gap: 6 }}>
+                      <View style={[styles.logDot, { backgroundColor: SERIES.squat }]} />
+                      <T style={{ fontSize: 14, fontWeight: '600' }}>스쿼트 {sel.squat}회</T>
+                    </Row>
+                  </Row>
+                </>
+              ) : (
+                <Muted style={{ fontSize: 14 }}>운동 기록이 없는 날이에요.</Muted>
+              )}
+            </View>
+          )}
+        </Card>
         {selLog && (
-          <View style={{ marginTop: 8 }}>
+          <View style={{ marginTop: 12 }}>
             {selLog.workouts.map((w, i) => (
               <View key={w.id}>
                 {i > 0 && <Divider />}
@@ -165,8 +169,8 @@ export default function Stats() {
   return (
     <Screen edges={['top']}>
       <H1 style={{ marginTop: 8 }}>기록</H1>
-      <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
-        <Segmented options={PERIODS} value={period} onChange={setPeriod} />
+      <View style={{ marginTop: 16 }}>
+        <Segmented options={PERIODS} value={period} onChange={setPeriod} stretch />
       </View>
 
       <Row style={{ gap: 8, marginTop: 16 }}>
@@ -188,6 +192,8 @@ export default function Stats() {
 }
 
 const styles = StyleSheet.create({
+  chartCard: { marginTop: 12, paddingVertical: 18 },
+  daySummary: { marginTop: 16, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, gap: 10 },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 2 },
   logRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   logDot: { width: 8, height: 8, borderRadius: 4 },

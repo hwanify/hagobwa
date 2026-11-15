@@ -12,8 +12,12 @@ import { colors } from '@/theme';
  * segments and the visible totals.
  */
 export const SERIES = { pushup: colors.red, squat: '#F0989A' } as const;
-/** Month heatmap ramp: no reps → most reps (one hue, light → dark). */
-const HEAT = [colors.ground, '#F6D3D3', '#EE9B9D', colors.red, '#A82A30'];
+
+/**
+ * Month heatmap ramp, drawn on a grey (colors.ground) card: no reps → most reps.
+ * One hue, light → dark, with clear steps so the grid reads crisp rather than washed out.
+ */
+const HEAT = [colors.paper, '#F2B4B6', '#E9797C', colors.red, '#A82A30'];
 
 function heatLevel(reps: number): number {
   if (reps <= 0) return 0;
@@ -23,7 +27,6 @@ function heatLevel(reps: number): number {
   return 4;
 }
 
-/** Compact legend, sized like the other secondary labels in the app. */
 export function Legend() {
   return (
     <View style={styles.legend}>
@@ -39,7 +42,7 @@ export function Legend() {
   );
 }
 
-/** Two-segment bar (push-ups then squats) with a 2px gap and rounded outer ends. */
+/** Two-segment bar (push-ups then squats) with a 2px gap and fully rounded outer ends. */
 export function SplitBar({ pushup, squat, height = 10, widthPct = 100 }: { pushup: number; squat: number; height?: number; widthPct?: number }) {
   if (pushup + squat === 0) return null;
   const r = height / 2;
@@ -73,11 +76,11 @@ export function SplitBar({ pushup, squat, height = 10, widthPct = 100 }: { pushu
   );
 }
 
-/** This week, one row per weekday (Mon..Sun): thin split bar + total. No axes, no boxes. */
+/** This week, one row per weekday (Mon..Sun): split bar + total. Meant to sit inside a Card. */
 export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
   const max = Math.max(1, ...days.map((d) => d.pushup + d.squat));
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: 2 }}>
       {days.map((d, i) => {
         const total = d.pushup + d.squat;
         const isToday = d.day === today;
@@ -89,15 +92,15 @@ export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
             accessibilityLabel={`${WEEKDAY_LABELS[i]}요일 푸시업 ${d.pushup}회 스쿼트 ${d.squat}회`}
             style={styles.weekRow}
           >
-            <T style={[styles.weekDay, isToday ? { color: colors.red } : future ? { color: colors.line } : null]}>{WEEKDAY_LABELS[i]}</T>
+            <T style={[styles.weekDay, isToday && { color: colors.red }, future && { opacity: 0.35 }]}>{WEEKDAY_LABELS[i]}</T>
             <View style={styles.weekTrack}>
               {total > 0 ? (
                 <SplitBar pushup={d.pushup} squat={d.squat} widthPct={(total / max) * 100} />
               ) : (
-                <View style={[styles.weekEmpty, future && { opacity: 0.4 }]} />
+                <View style={[styles.weekEmpty, future && { opacity: 0.5 }]} />
               )}
             </View>
-            <Mono style={[styles.weekTotal, !total && { color: colors.line }]}>{total || '-'}</Mono>
+            <Mono style={[styles.weekTotal, !total && { color: colors.mute, opacity: 0.5 }]}>{total || '-'}</Mono>
           </View>
         );
       })}
@@ -106,8 +109,9 @@ export function WeekBars({ days, today }: { days: DayTotal[]; today: number }) {
 }
 
 /**
- * Month heatmap (Mon-first): one rounded square per day, darker = more reps.
- * No numbers or outlines. Today and the selected day get a small dot underneath.
+ * Month heatmap (Mon-first), meant to sit inside a Card: one rounded square per elapsed day,
+ * darker = more reps. Future days are left blank. A small dot marks today (red) or the
+ * selected day (ink).
  */
 export function MonthHeatmap({
   days,
@@ -125,10 +129,14 @@ export function MonthHeatmap({
   const cells: (DayTotal | null)[] = [...Array.from({ length: lead }, () => null), ...days];
   while (cells.length % 7) cells.push(null);
   const weeks: (DayTotal | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  for (let i = 0; i < cells.length; i += 7) {
+    const week = cells.slice(i, i + 7);
+    // Only weeks that have started; future weeks would just leave an empty gap.
+    if (week.some((d) => d && d.day <= today)) weeks.push(week);
+  }
 
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: 2 }}>
       <View style={styles.calRow}>
         {WEEKDAY_LABELS.map((w) => (
           <Muted key={w} style={styles.calHead}>
@@ -139,9 +147,8 @@ export function MonthHeatmap({
       {weeks.map((week, wi) => (
         <View key={wi} style={styles.calRow}>
           {week.map((d, di) => {
-            if (!d) return <View key={di} style={styles.calSlot} />;
+            if (!d || d.day > today) return <View key={di} style={styles.calSlot} />;
             const total = d.pushup + d.squat;
-            const future = d.day > today;
             const isSel = selected === d.day;
             const isToday = d.day === today;
             return (
@@ -150,17 +157,12 @@ export function MonthHeatmap({
                 accessibilityRole="button"
                 accessibilityLabel={`${new Date(d.day).getDate()}일 ${total}회`}
                 accessibilityState={{ selected: isSel }}
-                disabled={future}
                 onPress={() => onSelect(d)}
+                hitSlop={2}
                 style={styles.calSlot}
               >
-                <View style={[styles.calSquare, { backgroundColor: HEAT[future ? 0 : heatLevel(total)] }, future && { opacity: 0.45 }]} />
-                <View
-                  style={[
-                    styles.calDot,
-                    { backgroundColor: isToday ? colors.red : isSel ? colors.ink : 'transparent' },
-                  ]}
-                />
+                <View style={[styles.calSquare, { backgroundColor: HEAT[heatLevel(total)] }]} />
+                <View style={[styles.calDot, { backgroundColor: isToday ? colors.red : isSel ? colors.ink : 'transparent' }]} />
               </Pressable>
             );
           })}
@@ -182,17 +184,17 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   swatch: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 12, fontWeight: '600' },
-  weekRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 36 },
-  weekDay: { width: 20, fontSize: 14, fontWeight: '700', color: colors.mute },
+  weekRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 34 },
+  weekDay: { width: 18, fontSize: 14, fontWeight: '700', color: colors.ink },
   weekTrack: { flex: 1, justifyContent: 'center' },
-  weekEmpty: { height: 10, borderRadius: 5, backgroundColor: colors.ground },
-  weekTotal: { width: 32, textAlign: 'right', fontSize: 14 },
+  weekEmpty: { height: 10, borderRadius: 5, backgroundColor: colors.paper },
+  weekTotal: { width: 30, textAlign: 'right', fontSize: 14 },
   calRow: { flexDirection: 'row' },
-  calHead: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', marginBottom: 2 },
-  calSlot: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 2 },
-  calSquare: { width: 30, height: 30, borderRadius: 9 },
+  calHead: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  calSlot: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 3 },
+  calSquare: { width: 32, height: 32, borderRadius: 10 },
   calDot: { width: 4, height: 4, borderRadius: 2 },
-  heatLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 6 },
+  heatLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 8 },
   heatLegendText: { fontSize: 12, fontWeight: '600' },
   heatSwatch: { width: 10, height: 10, borderRadius: 3 },
 });
