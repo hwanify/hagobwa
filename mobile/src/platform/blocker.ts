@@ -51,6 +51,7 @@ const ACTIVITY = 'hagobwa.usage';
  * starts a new one. Kept just under a week, the longest window iOS is documented to allow.
  */
 const WINDOW_MS = 7 * 24 * 3600_000 - 10 * 60_000;
+const USE_WEEK_WINDOW = false;
 let monitorUntil = 0;
 let monitorMode: 'none' | 'week' | 'day' = 'none';
 
@@ -246,9 +247,10 @@ const screenTime: AppBlocker = {
       });
 
     // One window from now that doesn't reset at midnight, so usage carries across days.
+    // Off for now: on a real phone iOS accepted it but seemed to stop reporting usage.
     const end = now + WINDOW_MS;
-    relockAt(end);
-    try {
+    if (USE_WEEK_WINDOW) relockAt(end);
+    if (USE_WEEK_WINDOW) try {
       await ScreenTime.startMonitoring(
         ACTIVITY,
         { intervalStart: dateParts(new Date(now)), intervalEnd: dateParts(new Date(end)), repeats: false },
