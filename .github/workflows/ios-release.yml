@@ -132,9 +132,9 @@ jobs:
             echo "Forced: $MODE"
             exit 0
           fi
-          COUNT=$(npx eas-cli build:list --platform ios --status finished --build-profile production \
-                    --fingerprint-hash "$HASH" --limit 1 --json --non-interactive | jq 'length')
-          if [ "$BUILT_HERE" = "true" ] || [ "${COUNT:-0}" -gt 0 ]; then
+          # Only builds that went through this workflow count: an EAS build that was never
+          # uploaded to TestFlight must not make us ship an OTA nobody's app can load.
+          if [ "$BUILT_HERE" = "true" ]; then
             echo "kind=update" >> "$GITHUB_OUTPUT"
             echo "A build with this fingerprint exists -> OTA update"
           else
