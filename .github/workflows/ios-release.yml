@@ -178,9 +178,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use the newest Xcode on the runner
+      # Xcode 26.3's Swift is stricter than what Expo SDK 58's native code compiles with
+      # ("sending 'slot' risks causing data races" in expo-modules-jsi). Prefer the 26.1/26.0
+      # line, which matches EAS's own build images more closely.
+      - name: Pick a compatible Xcode
         run: |
-          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          ls -d /Applications/Xcode_*.app
+          XCODE=""
+          for v in 26.1 26.0 26.2; do
+            XCODE=$(ls -d /Applications/Xcode_${v}*.app 2>/dev/null | sort -V | tail -1)
+            [ -n "$XCODE" ] && break
+          done
+          [ -n "$XCODE" ] || XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           echo "Using $XCODE"
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
