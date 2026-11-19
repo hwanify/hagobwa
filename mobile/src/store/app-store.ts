@@ -8,6 +8,7 @@ import type { AppId } from '@/core/apps';
 import { repsNeeded, type Difficulty, type ExerciseId } from '@/core/rates';
 import {
   applyEmergency,
+  EMERGENCY_PER_DAY,
   capFor,
   chargeScreenTime,
   creditWorkout,
@@ -18,7 +19,8 @@ import {
   type BankState,
 } from '@/core/timebank';
 import type { VoiceMode } from '@/core/voice';
-import { blocker } from '@/platform/blocker';
+import { blocker, emergencyDayUsed, markEmergencyDay } from '@/platform/blocker';
+import { dayKey } from '@/core/dates';
 
 export interface Settings {
   onboarded: boolean;
@@ -127,7 +129,10 @@ export const useAppStore = create<AppState>()(
 
       emergencyUnlock: () => {
         try {
-          set({ bank: applyEmergency(get().bank, Date.now()) });
+          const now = Date.now();
+          set({ bank: applyEmergency(get().bank, now) });
+          // Shared with the lock screen's emergency button: one per day across both.
+          markEmergencyDay(dayKey(now));
           void get().syncBlocker();
           return true;
         } catch {
@@ -147,8 +152,13 @@ export const useAppStore = create<AppState>()(
 
       syncBlocker: async ({ restart = true } = {}) => {
         if (blocker.kind === 'simulated') return;
-        const s = get();
         const now = Date.now();
+        // An emergency unlock used from the lock screen counts for today in the app too.
+        const today = dayKey(now);
+        if (emergencyDayUsed() === today && get().bank.emergency.day !== today) {
+          set({ bank: { ...get().bank, emergency: { day: today, used: EMERGENCY_PER_DAY } } });
+        }
+        const s = get();
         // Usage is cumulative since the monitor started, so short sessions add up (30s + 30s = 1 min).
         const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
         const bank = chargeScreenTime(s.bank, Math.max(0, used - s.blockerCharged), now);

@@ -1,0 +1,22 @@
+diff --git a/node_modules/react-native-device-activity/targets/ShieldAction/ShieldActionExtension.swift b/node_modules/react-native-device-activity/targets/ShieldAction/ShieldActionExtension.swift
+index da5121e..7c04d2d 100644
+--- a/node_modules/react-native-device-activity/targets/ShieldAction/ShieldActionExtension.swift
++++ b/node_modules/react-native-device-activity/targets/ShieldAction/ShieldActionExtension.swift
+@@ -17,6 +17,17 @@ func handleShieldAction(
+   categoryToken: ActivityCategoryToken?
+ ) -> ShieldActionResponse {
+   logger.log("handleAction")
++  // 하고봐: emergency unlock from the shield, at most once per local day.
++  if configForSelectedAction["hagobwaEmergency"] as? Bool == true {
++    let formatter = DateFormatter()
++    formatter.dateFormat = "yyyy-MM-dd"
++    let today = formatter.string(from: Date())
++    if userDefaults?.string(forKey: "hagobwaEmergencyDay") == today {
++      return .close
++    }
++    userDefaults?.set(today, forKey: "hagobwaEmergencyDay")
++    userDefaults?.set(Date().timeIntervalSince1970 * 1000, forKey: "hagobwaEmergencyAt")
++  }
+   if let actions = configForSelectedAction["actions"] as? [[String: Any]] {
+     for action in actions {
+       executeGenericAction(

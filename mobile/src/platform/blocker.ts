@@ -129,12 +129,44 @@ async function prepareShieldIcon(): Promise<boolean> {
   }
 }
 
-let shieldReps = -1;
-/** L-4 lock screen: paper background and a big red "0분". */
-async function ensureShield(reps10: number) {
-  if (shieldReps === reps10) return;
-  shieldReps = reps10;
+let shieldKey = '';
+/** Usage window for an emergency unlock started from the lock screen. */
+export const EMERGENCY_ACTIVITY = 'hagobwaEmergency';
+const EMERGENCY_MIN = 5;
+
+/**
+ * L-4 lock screen: paper background and a big red "0분", plus an emergency button that opens
+ * the apps right there for 5 minutes of use, once a day (the daily limit lives in our patch of
+ * the ShieldAction extension: patches/react-native-device-activity+*.patch).
+ */
+async function ensureShield(reps10: number, token: string) {
+  const key = `${reps10}|${token}`;
+  if (shieldKey === key) return;
+  shieldKey = key;
   const hasIcon = await prepareShieldIcon();
+  // When the 5 emergency minutes are used up, lock again.
+  ScreenTime.configureActions({
+    activityName: EMERGENCY_ACTIVITY,
+    callbackName: 'eventDidReachThreshold',
+    eventName: 'used',
+    actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID }],
+  });
+  const emergency = {
+    behavior: 'defer' as const,
+    hagobwaEmergency: true,
+    actions: [
+      { type: 'unblockSelection' as const, familyActivitySelectionId: SELECTION_ID },
+      {
+        type: 'startMonitoring' as const,
+        activityName: EMERGENCY_ACTIVITY,
+        intervalStartDelayMs: 0,
+        intervalEndDelayMs: 23 * 3600_000,
+        deviceActivityEvents: [
+          { eventName: 'used', familyActivitySelection: token, threshold: { minute: EMERGENCY_MIN }, includesPastActivity: false },
+        ],
+      },
+    ],
+  };
   ScreenTime.updateShield(
     {
       // Opaque paper with a light blur so no coloured edge shows in the app switcher.
@@ -149,9 +181,29 @@ async function ensureShield(reps10: number) {
       primaryButtonLabel: '확인',
       primaryButtonLabelColor: WHITE,
       primaryButtonBackgroundColor: INK,
+      secondaryButtonLabel: `비상 ${EMERGENCY_MIN}분 열기 (하루 1번)`,
+      secondaryButtonLabelColor: MUTE,
     },
-    { primary: { behavior: 'close' } },
+    // `hagobwaEmergency` is read by our ShieldAction patch; the library's type doesn't know it.
+    { primary: { behavior: 'close' }, secondary: emergency as unknown as ScreenTime.ShieldAction },
   );
+}
+
+/** Day key of the last emergency unlock (lock screen or app), shared with the extension. */
+export function emergencyDayUsed(): string | undefined {
+  try {
+    return ScreenTime.userDefaultsGet<string>('hagobwaEmergencyDay');
+  } catch {
+    return undefined;
+  }
+}
+
+export function markEmergencyDay(day: string): void {
+  try {
+    ScreenTime.userDefaultsSet('hagobwaEmergencyDay', day);
+  } catch {
+    // simulated / unavailable
+  }
 }
 
 const screenTime: AppBlocker = {
@@ -201,8 +253,9 @@ const screenTime: AppBlocker = {
   async apply(balanceSec, reps10 = 10) {
     if (ScreenTime.getAuthorizationStatus() !== ScreenTime.AuthorizationStatus.approved) return 0;
     const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
-    await ensureShield(reps10);
-    ScreenTime.stopMonitoring([ACTIVITY]);
+    if (token) await ensureShield(reps10, token);
+    // A new sync replaces any emergency window started from the lock screen.
+    ScreenTime.stopMonitoring([ACTIVITY, EMERGENCY_ACTIVITY]);
     ScreenTime.cleanUpAfterActivity(ACTIVITY);
     // Start from a clean slate so apps removed from the selection don't stay shielded.
     ScreenTime.resetBlocks('hagobwa:sync');
