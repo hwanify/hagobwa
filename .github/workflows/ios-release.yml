@@ -33,6 +33,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      kind: ${{ steps.decide.outputs.kind }}
+      hash: ${{ steps.fp.outputs.hash }}
     defaults:
       run:
         working-directory: mobile
@@ -101,19 +104,37 @@ jobs:
             ' "$f"
           done
 
+      - name: Fingerprint of the native project
+        id: fp
+        run: |
+          HASH=$(npx eas-cli fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r '.hash')
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Fingerprint: $HASH"
+
+      # Builds now run on GitHub's Mac (not EAS servers), so EAS doesn't list them.
+      # A cache entry per fingerprint records "a TestFlight build exists for this native code".
+      - name: Was this native code already built here?
+        id: built
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/.built-marker
+          key: ios-built-${{ steps.fp.outputs.hash }}
+          lookup-only: true
+
       - name: Decide build or OTA
         id: decide
+        env:
+          HASH: ${{ steps.fp.outputs.hash }}
+          BUILT_HERE: ${{ steps.built.outputs.cache-hit }}
         run: |
           if [ "$MODE" = "build" ] || [ "$MODE" = "update" ]; then
             echo "kind=$MODE" >> "$GITHUB_OUTPUT"
             echo "Forced: $MODE"
             exit 0
           fi
-          HASH=$(npx eas-cli fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r '.hash')
-          echo "Fingerprint: $HASH"
           COUNT=$(npx eas-cli build:list --platform ios --status finished --build-profile production \
                     --fingerprint-hash "$HASH" --limit 1 --json --non-interactive | jq 'length')
-          if [ "${COUNT:-0}" -gt 0 ]; then
+          if [ "$BUILT_HERE" = "true" ] || [ "${COUNT:-0}" -gt 0 ]; then
             echo "kind=update" >> "$GITHUB_OUTPUT"
             echo "A build with this fingerprint exists -> OTA update"
           else
@@ -136,21 +157,77 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq expect
           env -u CI expect scripts/eas-ios-credentials.exp
 
-      - name: Build on EAS (iOS, production)
-        if: steps.decide.outputs.kind == 'build'
-        run: npx eas-cli build --platform ios --profile production --non-interactive
+  # Builds on GitHub's macOS runner (free for public repos) instead of EAS servers, so the
+  # EAS build quota doesn't apply. Signing credentials still come from EAS.
+  build-ios:
+    needs: release
+    if: needs.release.outputs.kind == 'build'
+    runs-on: macos-15
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE || 'INDIVIDUAL' }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Add TestFlight submit profile
-        if: steps.decide.outputs.kind == 'build'
+      - name: Use the newest Xcode on the runner
         run: |
-          jq --arg app "$ASC_APP_ID" --arg path "$RUNNER_TEMP/asc_key.p8" \
-             --arg kid "$EXPO_ASC_KEY_ID" --arg iss "$EXPO_ASC_ISSUER_ID" \
-             '.submit.production.ios += {ascAppId: $app, ascApiKeyPath: $path, ascApiKeyId: $kid, ascApiKeyIssuerId: $iss}' \
-             eas.json > eas.tmp.json && mv eas.tmp.json eas.json
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm ci
+
+      - name: App Store Connect API key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${EXPO_ASC_KEY_ID}.p8
+          echo "EXPO_ASC_API_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${EXPO_ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Skip Family Controls in eas-cli capability sync
+        run: |
+          npx eas-cli --version
+          for f in $(find ~/.npm/_npx -path '*eas-cli/build/credentials/ios/appstore/capabilityList.js'); do
+            node -e '
+              const fs = require("fs"); const f = process.argv[1];
+              let s = fs.readFileSync(f, "utf8");
+              const re = /\{\s*name: .Family Controls.,[\s\S]*?getSyncOperation: getBooleanSyncOperation,\s*\},/;
+              if (!re.test(s)) { console.log("already patched or changed:", f); process.exit(0); }
+              fs.writeFileSync(f, s.replace(re, "")); console.log("patched", f);
+            ' "$f"
+          done
+
+      - name: Build the app on this Mac (eas build --local)
+        run: |
+          npx eas-cli build --platform ios --profile production --local --non-interactive \
+            --output "$RUNNER_TEMP/hagobwa.ipa"
 
       - name: Upload to TestFlight
-        if: steps.decide.outputs.kind == 'build'
         run: |
-          npx eas-cli submit --platform ios --profile production --latest --non-interactive
-          echo "### 새 빌드를 TestFlight에 올렸어요" >> "$GITHUB_STEP_SUMMARY"
+          xcrun altool --upload-app --type ios --file "$RUNNER_TEMP/hagobwa.ipa" \
+            --apiKey "$EXPO_ASC_KEY_ID" --apiIssuer "$EXPO_ASC_ISSUER_ID"
+          echo "### 새 빌드를 TestFlight에 올렸어요 (GitHub Mac에서 빌드)" >> "$GITHUB_STEP_SUMMARY"
           echo "애플 처리 후 TestFlight 앱에서 업데이트하세요." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remember this native code is built
+        run: echo "${{ needs.release.outputs.hash }}" > .built-marker
+
+      - uses: actions/cache/save@v4
+        with:
+          path: mobile/.built-marker
+          key: ios-built-${{ needs.release.outputs.hash }}
