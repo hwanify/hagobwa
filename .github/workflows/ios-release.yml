@@ -162,7 +162,7 @@ jobs:
   build-ios:
     needs: release
     if: needs.release.outputs.kind == 'build'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 120
     defaults:
       run:
@@ -178,18 +178,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Xcode 26.3's Swift is stricter than what Expo SDK 58's native code compiles with
-      # ("sending 'slot' risks causing data races" in expo-modules-jsi). Prefer the 26.1/26.0
-      # line, which matches EAS's own build images more closely.
-      - name: Pick a compatible Xcode
+      # Expo SDK 58's native code (expo-modules-jsi, Swift 6 mode) needs Xcode 27 / Swift 6.4,
+      # like EAS's own build image; Xcode 26.x fails with "sending 'slot' risks causing data races".
+      - name: Pick Xcode 27
         run: |
           ls -d /Applications/Xcode_*.app
-          XCODE=""
-          for v in 26.1 26.0 26.2; do
-            XCODE=$(ls -d /Applications/Xcode_${v}*.app 2>/dev/null | sort -V | tail -1)
-            [ -n "$XCODE" ] && break
-          done
-          [ -n "$XCODE" ] || XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          XCODE=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          [ -n "$XCODE" ] || XCODE=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "::error::No Xcode 27 on this runner image."
+            exit 1
+          fi
           echo "Using $XCODE"
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
