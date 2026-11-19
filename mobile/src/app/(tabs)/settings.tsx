@@ -2,14 +2,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppTile, Button, Card, Chip, Divider, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
-import { LOCKABLE_APPS, type AppId } from '@/core/apps';
+import { Button, Chip, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { formatDuration } from '@/core/format';
 import { DIFFICULTIES, secondsPerRep } from '@/core/rates';
 import { VOICE_MODES } from '@/core/voice';
 import { say } from '@/platform/feedback';
-import { LockedAppList } from '@/features/lock/LockedAppList';
-import { useLockPicker } from '@/features/lock/LockPicker';
+import { clearPicked } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -34,22 +32,16 @@ function usageDiag(since: number, until: number, charged: number): string {
 
 export default function Settings() {
   const s = useAppStore();
-  const [note, setNote] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const picker = useLockPicker();
-
-  const toggleApp = (id: AppId) => {
-    setNote('');
-    if (s.lockedApps.includes(id)) {
-      s.updateSettings({ lockedApps: s.lockedApps.filter((x) => x !== id) });
-    } else {
-      s.updateSettings({ lockedApps: [...s.lockedApps, id] });
-    }
-  };
+  // Hidden test tools: tap the title 7 times.
+  const [taps, setTaps] = useState(0);
+  const dev = taps >= 7;
 
   return (
     <Screen edges={['top']}>
-      <H1 style={{ marginTop: 8 }}>설정</H1>
+      <Pressable onPress={() => setTaps((n) => n + 1)} accessible={false}>
+        <H1 style={{ marginTop: 8 }}>설정</H1>
+      </Pressable>
 
       <H2 style={styles.section}>하루 최대 시간</H2>
       <Muted>잔고는 이 시간까지만 모여요.</Muted>
@@ -84,47 +76,16 @@ export default function Settings() {
         <T style={{ fontWeight: '700', color: s.sound ? colors.red : colors.mute }}>{s.sound ? '켜짐' : '꺼짐'}</T>
       </Pressable>
 
-      <H2 style={styles.section}>잠글 앱</H2>
-      {blocker.kind === 'ios-screentime' ? (
-        <View>
-          <Muted style={{ marginBottom: 4 }}>편집을 누르면 지금 잠근 앱이 체크된 채로 열려요. 추가하거나 빼고 완료를 누르세요.</Muted>
-          <LockedAppList />
-          <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={styles.toggleRow} disabled={picker.saving}>
-            <T>{picker.count > 0 ? `${picker.count}개 잠그는 중` : '아직 고르지 않았어요'}</T>
-            <T style={{ fontWeight: '700', color: picker.saving ? colors.mute : colors.red }}>
-              {picker.saving ? '저장 중…' : picker.count > 0 ? '편집' : '고르기'}
-            </T>
-          </Pressable>
-        </View>
-      ) : LOCKABLE_APPS.map((a, i) => {
-        const on = s.lockedApps.includes(a.id);
-        return (
-          <View key={a.id}>
-            {i > 0 && <Divider />}
-            <Pressable accessibilityRole="switch" accessibilityState={{ checked: on }} onPress={() => toggleApp(a.id)} style={styles.appRow}>
-              <AppTile appId={a.id} size={34} />
-              <T style={{ flex: 1, fontWeight: '600' }}>{a.name}</T>
-              <T style={{ fontWeight: '700', color: on ? colors.red : colors.mute }}>{on ? '잠금' : '-'}</T>
-            </Pressable>
-          </View>
-        );
-      })}
-      {picker.element}
-      {note ? <T style={{ color: colors.red, fontWeight: '600', marginTop: 8 }}>{note}</T> : null}
-
-      <Card style={{ marginTop: 24 }}>
-        <T style={{ fontWeight: '700' }}>앱 잠금 상태</T>
-        <Muted style={{ fontSize: 13, marginTop: 4 }}>{blocker.description}</Muted>
-      </Card>
-
       <View style={{ marginTop: 28, gap: 8 }}>
-        <Button
-          variant="ghost"
-          label={s.bank.balanceSec > 0 ? '테스트: 잔고 0으로 만들기' : '테스트: 잔고가 0이에요'}
-          disabled={s.bank.balanceSec <= 0}
-          onPress={s.clearBalance}
-        />
-        {blocker.kind === 'ios-screentime' && (
+        {dev && (
+          <Button
+            variant="ghost"
+            label={s.bank.balanceSec > 0 ? '테스트: 잔고 0으로 만들기' : '테스트: 잔고가 0이에요'}
+            disabled={s.bank.balanceSec <= 0}
+            onPress={s.clearBalance}
+          />
+        )}
+        {dev && blocker.kind === 'ios-screentime' && (
           <Muted style={{ fontSize: 11, textAlign: 'center' }}>
             {blocker.diagnose()}
             {'\n'}
@@ -133,13 +94,15 @@ export default function Settings() {
         )}
         {confirmReset ? (
           <>
-            <T style={{ color: colors.red, fontWeight: '700' }}>잔고, 운동 기록, 설정이 모두 지워져요.</T>
+            <T style={{ color: colors.red, fontWeight: '700' }}>잔고, 운동 기록, 설정, 잠근 앱이 모두 지워지고 잠금이 풀려요.</T>
             <Row style={{ gap: 8 }}>
               <Button variant="quiet" style={{ flex: 1 }} label="취소" onPress={() => setConfirmReset(false)} />
               <Button
                 style={{ flex: 1 }}
                 label="모두 지우기"
                 onPress={() => {
+                  // Forget the picked apps first so the reset also lifts every lock.
+                  clearPicked();
                   s.resetAll();
                   router.replace('/onboarding');
                 }}
@@ -158,5 +121,4 @@ const styles = StyleSheet.create({
   section: { marginTop: 28, marginBottom: 4 },
   chips: { gap: 6, marginTop: 10, flexWrap: 'wrap' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, marginTop: 6 },
-  appRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
 });

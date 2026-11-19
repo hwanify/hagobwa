@@ -135,11 +135,6 @@ export default function Onboarding() {
             </Pressable>
           )}
           {note ? <T style={styles.note}>{note}</T> : null}
-          {picker.closedOnce && (
-            <Muted style={{ fontSize: 11, marginTop: 16 }}>
-              진단: {blocker.diagnose()} · 마지막 선택 {picker.lastEvent}
-            </Muted>
-          )}
           {picker.element}
         </View>
       )}

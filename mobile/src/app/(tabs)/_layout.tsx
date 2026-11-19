@@ -10,7 +10,7 @@ import { colors, MAX_WIDTH } from '@/theme';
 
 const ITEMS: { name: string; label: string; icon: TabIconName }[] = [
   { name: 'index', label: '홈', icon: 'home' },
-  { name: 'crew', label: '크루', icon: 'crew' },
+  { name: 'lock', label: '잠금', icon: 'lock' },
   { name: 'stats', label: '기록', icon: 'records' },
   { name: 'settings', label: '설정', icon: 'settings' },
 ];
@@ -61,7 +61,7 @@ export default function TabsLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <TabBar {...props} />}>
       <Tabs.Screen name="index" options={{ title: '홈' }} />
-      <Tabs.Screen name="crew" options={{ title: '크루' }} />
+      <Tabs.Screen name="lock" options={{ title: '잠금' }} />
       <Tabs.Screen name="stats" options={{ title: '기록' }} />
       <Tabs.Screen name="settings" options={{ title: '설정' }} />
     </Tabs>

@@ -56,6 +56,23 @@ export function usePickedItems(): PickedItem[] {
   return useMemo(readItems, [rev]);
 }
 
+/** Forget every picked app (data reset). */
+export function clearPicked(): void {
+  try {
+    const token = ScreenTime.getFamilyActivitySelectionId(SELECTION_ID);
+    if (token) {
+      ScreenTime.difference(
+        { activitySelectionToken: token },
+        { activitySelectionToken: token },
+        { persistAsActivitySelectionId: SELECTION_ID },
+      );
+    }
+  } catch {
+    // nothing saved
+  }
+  useSelectionRev.setState((s) => ({ rev: s.rev + 1 }));
+}
+
 /** Remove one picked app/category/site from the selection. */
 export function removePicked(item: PickedItem): void {
   try {

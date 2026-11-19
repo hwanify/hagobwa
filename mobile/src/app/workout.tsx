@@ -122,6 +122,9 @@ export default function Workout() {
           <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
         </View>
       </Row>
+      <Muted style={styles.tip}>
+        폰을 바닥에 세우고 몸 옆모습이 다 보이게 두면 가장 잘 세져요. 무리하지 말고, 아프면 바로 멈추세요.
+      </Muted>
       <Row style={styles.optionRow}>
         <Muted style={styles.optionLabel}>구령</Muted>
         <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -137,6 +140,7 @@ export default function Workout() {
 const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   firstNote: { marginTop: 14, fontWeight: '700', color: colors.red },
+  tip: { fontSize: 12, lineHeight: 18, marginTop: 10 },
   optionRow: { justifyContent: 'space-between', marginTop: 14, gap: 12 },
   optionLabel: { fontSize: 12, fontWeight: '600' },
 });

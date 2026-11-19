@@ -20,7 +20,7 @@ import { appById, type AppId } from "@/core/apps";
 import { formatDuration, minutesOf } from "@/core/format";
 import { EXERCISE_LABEL } from "@/core/rates";
 import { capFor, streakDays, todayReps } from "@/core/timebank";
-import { LockedAppList } from "@/features/lock/LockedAppList";
+import { EmergencyUnlock } from "@/features/lock/EmergencyUnlock";
 import { useLockPicker } from "@/features/lock/LockPicker";
 import { blocker } from "@/platform/blocker";
 import { useAppStore, useNow } from "@/store/app-store";
@@ -165,35 +165,25 @@ export default function Home() {
   );
 }
 
-/** iOS: the picked apps with their real icons (drawn by iOS) and a way to remove each. */
+/** iOS: a compact lock summary; the 잠금 tab has the list, editing and emergency unlock. */
 function NativeLockStatus({ open }: { open: boolean }) {
   const picker = useLockPicker();
+  const locked = !open && picker.count > 0;
   return (
     <>
-      <Row style={{ justifyContent: 'space-between', marginTop: 24, marginBottom: 4 }}>
-        <T style={{ fontSize: 15, fontWeight: '700' }}>
-          잠긴 앱 {picker.count}
-          {picker.count > 0 && (
-            <T style={{ fontSize: 13, fontWeight: '600', color: open ? colors.mute : colors.red }}> · {open ? '열려 있어요' : '잠겨 있어요'}</T>
-          )}
-        </T>
-        <Pressable accessibilityRole="button" onPress={() => void picker.open()} hitSlop={10} disabled={picker.saving}>
-          <T style={{ fontSize: 13, fontWeight: '700', color: picker.saving ? colors.mute : colors.red }}>
-            {picker.saving ? '저장 중…' : picker.count > 0 ? '편집' : '고르기'}
+      <Pressable accessibilityRole="button" onPress={() => router.navigate('/lock')} style={styles.lockRow}>
+        <Ionicons name={locked ? 'lock-closed' : 'lock-open-outline'} size={20} color={locked ? colors.red : colors.mute} />
+        <View style={{ flex: 1 }}>
+          <T style={{ fontSize: 15, fontWeight: '700' }}>
+            {picker.count === 0 ? '잠근 앱이 없어요' : `잠긴 앱 ${picker.count} · ${locked ? '잠겨 있어요' : '열려 있어요'}`}
           </T>
-        </Pressable>
-      </Row>
-      {picker.count === 0 ? (
-        <Pressable accessibilityRole="button" onPress={() => void picker.open()} style={{ paddingVertical: 14 }}>
-          <Muted>아직 잠근 앱이 없어요. 눌러서 골라 주세요.</Muted>
-        </Pressable>
-      ) : (
-        <>
-          <LockedAppList />
-          <Muted style={{ fontSize: 12, marginTop: 6 }}>{open ? '충전한 시간을 다 쓰면 다시 잠겨요' : '운동하고 충전하면 열려요'}</Muted>
-        </>
-      )}
-      {picker.element}
+          <Muted style={{ fontSize: 12 }}>
+            {picker.count === 0 ? '눌러서 잠글 앱을 골라 주세요' : locked ? '운동하고 충전하면 열려요' : '충전한 시간을 다 쓰면 다시 잠겨요'}
+          </Muted>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.mute} />
+      </Pressable>
+      {locked && <EmergencyUnlock />}
     </>
   );
 }
@@ -213,6 +203,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 10,
+  },
+  lockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: colors.ground,
   },
   lastCharge: {
     flexDirection: "row",
