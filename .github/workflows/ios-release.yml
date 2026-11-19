@@ -178,9 +178,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Expo SDK 58 targets Xcode 27 (Swift 6.4), which GitHub's runners don't have yet. Use the
-      # newest Xcode available; patches/expo-modules-jsi+*.patch builds that package in Swift 5
-      # mode so older Swift doesn't reject it ("sending 'slot' risks causing data races").
+      # Expo SDK 58 targets Xcode 27 (Swift 6.4), which GitHub's runners don't have yet; use the
+      # newest Xcode available (26.6 on macos-26).
       - name: Pick the newest Xcode
         run: |
           ls -d /Applications/Xcode_*.app
