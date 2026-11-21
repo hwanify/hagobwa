@@ -308,7 +308,10 @@ describe('voice', () => {
     expect(repLine('drill', 5, 10)).toBe('다섯!');
     expect(repLine('pt', 7, 10)).toBe('일곱');
     expect(repLine('mom', 10, 10)).toBe('열');
-    expect(repLine('basic', 25, 30)).toBe('25');
+    expect(repLine('basic', 25, 30)).toBe('스물다섯');
+    expect(repLine('basic', 100, 0)).toBe('백');
+    expect(repLine('basic', 137, 0)).toBe('백서른일곱');
+    expect(repLine('basic', 201, 0)).toBe('201');
   });
 });
 

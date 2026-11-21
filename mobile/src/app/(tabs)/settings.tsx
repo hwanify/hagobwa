@@ -4,19 +4,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Chip, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { DIFFICULTIES, rateLabel } from '@/core/rates';
-import { VOICE_MODES } from '@/core/voice';
-import { say } from '@/platform/feedback';
+import { sayCount } from '@/platform/feedback';
 import { clearPicked } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
-
-const SAMPLE_LINE = {
-  basic: '하나. 둘. 셋.',
-  drill: '하나! 둘! 셋!',
-  pt: '하나. 둘. 셋.',
-  mom: '하나. 둘. 셋.',
-} as const;
 
 /** Test builds: how the current usage window is doing (start, end, minutes iOS reported). */
 function usageDiag(since: number, until: number, charged: number): string {
@@ -56,21 +48,15 @@ export default function Settings() {
         <Segmented options={DIFFICULTIES} value={s.difficulty} onChange={(d) => s.updateSettings({ difficulty: d })} />
       </View>
 
-      <H2 style={styles.section}>구령 목소리</H2>
-      <Muted>아이폰 설정 → 손쉬운 사용 → 읽기 및 말하기 → 음성 → 한국어에서 고음질 목소리를 받으면 더 자연스러워요.</Muted>
-      <Row style={styles.chips}>
-        {VOICE_MODES.map((v) => (
-          <Chip
-            key={v.id}
-            label={v.label}
-            active={s.voice === v.id}
-            onPress={() => {
-              s.updateSettings({ voice: v.id });
-              say(SAMPLE_LINE[v.id], v.id);
-            }}
-          />
-        ))}
-      </Row>
+      <H2 style={styles.section}>구령</H2>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => [1, 2, 3].forEach((n, i) => setTimeout(() => sayCount(n), i * 700))}
+        style={styles.toggleRow}
+      >
+        <T>구령 들어보기</T>
+        <T style={{ fontWeight: '700', color: colors.red }}>하나, 둘, 셋</T>
+      </Pressable>
       <Pressable accessibilityRole="switch" accessibilityState={{ checked: s.sound }} onPress={() => s.updateSettings({ sound: !s.sound })} style={styles.toggleRow}>
         <T>운동 중 소리</T>
         <T style={{ fontWeight: '700', color: s.sound ? colors.red : colors.mute }}>{s.sound ? '켜짐' : '꺼짐'}</T>

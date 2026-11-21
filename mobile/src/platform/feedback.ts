@@ -2,7 +2,10 @@ import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 
-import type { VoiceMode } from '@/core/voice';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+
+import { koCount, type VoiceMode } from '@/core/voice';
+import { COUNT_CLIPS } from '@/features/voice/counts';
 
 /**
  * Native Korean voices only (no foreign accent): the best one installed on the phone,
@@ -72,4 +75,57 @@ export function tapFeedback(): void {
 export function successFeedback(): void {
   if (Platform.OS === 'web') return;
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+}
+
+
+/* ---------- recorded counts ---------- */
+
+let audioReady = false;
+const players = new Map<number, AudioPlayer>();
+
+function playerFor(n: number): AudioPlayer | null {
+  const clip = COUNT_CLIPS[n];
+  if (clip === undefined) return null;
+  let p = players.get(n);
+  if (!p) {
+    p = createAudioPlayer(clip);
+    players.set(n, p);
+  }
+  return p;
+}
+
+/**
+ * Say a rep count in the recorded voice; numbers beyond the recordings use the system voice.
+ * Plays over music (ducking it) and in silent mode, since the user asked for counting.
+ */
+export function sayCount(n: number): void {
+  try {
+    if (!audioReady) {
+      audioReady = true;
+      setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+    }
+    const p = playerFor(n);
+    if (!p) {
+      say(koCount(n), 'drill');
+      return;
+    }
+    void p.seekTo(0).then(() => p.play());
+    // Warm up the next couple so they start instantly.
+    playerFor(n + 1);
+    playerFor(n + 2);
+  } catch {
+    // Counting out loud is a bonus. Never block the workout on it.
+  }
+}
+
+/** Free the preloaded clips when a workout ends. */
+export function releaseCounts(): void {
+  for (const p of players.values()) {
+    try {
+      p.remove();
+    } catch {
+      // already gone
+    }
+  }
+  players.clear();
 }

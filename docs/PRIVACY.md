@@ -50,3 +50,6 @@ Hagobwa does not collect personal data.
 - **Third-party servers**: the app downloads updates from Expo (EAS Update) and the pose-detection model from Google / jsDelivr; these services may log standard connection data such as IP addresses.
 - **No ads, analytics or tracking.**
 - **Contact**: https://github.com/hwanify/pushupapp/issues
+
+---
+구령 음성: Chatterbox Multilingual(MIT 라이선스)로 합성했으며, Zeroth Korean 음성 자료(CC BY 4.0, Lucas Jo · Wonkyum Lee)의 화자 목소리를 참고했습니다.

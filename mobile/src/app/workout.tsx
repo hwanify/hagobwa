@@ -1,15 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Chip, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
+import { Button, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
-import { repLine, VOICE_MODES } from '@/core/voice';
 import PoseCamera from '@/features/pose/PoseCamera';
 import { closeScreen, goHome } from '@/navigation';
-import { say, tapFeedback } from '@/platform/feedback';
+import { releaseCounts, sayCount, tapFeedback } from '@/platform/feedback';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
@@ -19,7 +18,6 @@ export default function Workout() {
   const back = params.back ?? '';
 
   const difficulty = useAppStore((s) => s.difficulty);
-  const voice = useAppStore((s) => s.voice);
   const sound = useAppStore((s) => s.sound);
   const update = useAppStore((s) => s.updateSettings);
   const logWorkout = useAppStore((s) => s.logWorkout);
@@ -29,8 +27,9 @@ export default function Workout() {
   const [pulse, setPulse] = useState(0);
 
   const countRef = useRef(0);
-  const live = useRef({ voice, sound });
-  live.current = { voice, sound };
+  const live = useRef({ sound });
+  live.current = { sound };
+  useEffect(() => releaseCounts, []);
   const finishedRef = useRef(false);
 
   const addRep = useCallback(() => {
@@ -40,7 +39,7 @@ export default function Workout() {
     setCount(n);
     setPulse((p) => p + 1);
     tapFeedback();
-    if (live.current.sound) say(repLine(live.current.voice, n, 0), live.current.voice);
+    if (live.current.sound) sayCount(n);
   }, []);
 
   const finish = useCallback(() => {
@@ -129,14 +128,6 @@ export default function Workout() {
           <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
         </View>
       </Row>
-      <Row style={styles.optionRow}>
-        <Muted style={styles.optionLabel}>구령</Muted>
-        <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {VOICE_MODES.map((v) => (
-            <Chip key={v.id} label={v.label} active={voice === v.id} onPress={() => update({ voice: v.id })} />
-          ))}
-        </Row>
-      </Row>
     </Screen>
   );
 }
@@ -144,6 +135,4 @@ export default function Workout() {
 const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   firstNote: { marginTop: 14, fontWeight: '700', color: colors.red },
-  optionRow: { justifyContent: 'space-between', marginTop: 10, marginBottom: 4, gap: 12 },
-  optionLabel: { fontSize: 12, fontWeight: '600' },
 });
