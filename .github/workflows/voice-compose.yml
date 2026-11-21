@@ -38,10 +38,10 @@ jobs:
                       "-ac", "1", "-ar", "24000", out], check=True)
               return out
           made = []
-          for n in range(21, 100):  # 100+ use the system voice
-              if have(n) or n % 10 == 0 and n < 100:
+          for n in range(11, 100):  # 100+ use the system voice
+              if have(n) or n % 10 == 0:
                   continue
-              parts = [n // 10 * 10, n % 10] if n < 100 else [100, n - 100]
+              parts = [n // 10 * 10, n % 10]
               if not all(have(p) for p in parts):
                   print(n, "skip: needs", [p for p in parts if not have(p)])
                   continue
