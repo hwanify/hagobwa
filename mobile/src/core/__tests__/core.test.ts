@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { formatClock, formatDuration } from '../format';
-import { earnedSeconds, repsNeeded, secondsPerRep, stepsSeconds } from '../rates';
+import { earnedSeconds, rateLabel, repsNeeded, stepsSeconds } from '../rates';
 import { measure, RepCounter, type Landmark } from '../repCounter';
 import {
   applyEmergency,
@@ -28,11 +28,14 @@ const CAP = 2 * 3600;
 
 describe('rates', () => {
   it('pushup 1 rep = 1 min at normal', () => {
-    expect(secondsPerRep('pushup', 'normal')).toBe(60);
+    expect(rateLabel('pushup', 'normal')).toBe('1회 = 1분');
+    expect(rateLabel('squat', 'hard')).toBe('4회 = 1분');
     expect(earnedSeconds('pushup', 10, 'normal')).toBe(600);
   });
   it('difficulty scales earnings', () => {
-    expect(earnedSeconds('squat', 10, 'easy')).toBe(450);
+    expect(earnedSeconds('squat', 10, 'easy')).toBe(600);
+    // whole minutes only: 7 squats at normal (2 per minute) = 3 minutes
+    expect(earnedSeconds('squat', 7, 'normal')).toBe(180);
     expect(earnedSeconds('pushup', 10, 'hard')).toBe(300);
   });
   it('ignores non-positive reps', () => {
@@ -42,6 +45,7 @@ describe('rates', () => {
   it('reps needed rounds up', () => {
     expect(repsNeeded(600, 'pushup', 'normal')).toBe(10);
     expect(repsNeeded(61, 'pushup', 'normal')).toBe(2);
+    expect(repsNeeded(600, 'squat', 'normal')).toBe(20);
     expect(repsNeeded(600, 'squat', 'hard')).toBe(40);
   });
   it('steps: 1,000 steps = 5 min', () => {

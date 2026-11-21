@@ -3,10 +3,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Chip, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
-import { formatDuration } from '@/core/format';
+import { Button, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
-import { repLine, VOICE_MODES } from '@/core/voice';
+import { repLine } from '@/core/voice';
 import PoseCamera from '@/features/pose/PoseCamera';
 import { closeScreen, goHome } from '@/navigation';
 import { say, tapFeedback } from '@/platform/feedback';
@@ -45,7 +44,7 @@ export default function Workout() {
 
   const finish = useCallback(() => {
     const reps = countRef.current;
-    if (reps <= 0 || finishedRef.current) return;
+    if (reps <= 0 || finishedRef.current || earnedSeconds(exercise, reps, difficulty) === 0) return;
     const saved = logWorkout(exercise, reps);
     if (!saved) return;
     finishedRef.current = true;
@@ -53,7 +52,7 @@ export default function Workout() {
       pathname: '/done',
       params: { id: saved.id, fresh: '1', added: String(saved.earnedSec), back, first: first ? '1' : '' },
     });
-  }, [back, exercise, first, logWorkout]);
+  }, [back, difficulty, exercise, first, logWorkout]);
 
   const reset = () => {
     countRef.current = 0;
@@ -65,7 +64,8 @@ export default function Workout() {
     else closeScreen();
   };
 
-  const gainPreview = earnedSeconds(exercise, count, difficulty);
+  // Earnings are whole minutes, so a few reps may not be worth a minute yet.
+  const gain = earnedSeconds(exercise, count, difficulty);
 
   return (
     <Screen
@@ -78,7 +78,12 @@ export default function Workout() {
             icon={<Ionicons name="hand-left-outline" size={18} color={colors.ink} />}
             onPress={addRep}
           />
-          <Button style={{ flex: 1.2 }} label="충전하기" onPress={finish} disabled={count === 0} />
+          <Button
+            style={{ flex: 1.2 }}
+            label={count > 0 && gain === 0 ? '조금만 더' : '충전하기'}
+            onPress={finish}
+            disabled={gain === 0}
+          />
         </Row>
       }
     >
@@ -112,27 +117,16 @@ export default function Workout() {
         <PoseCamera exercise={exercise} onRep={addRep} />
       </View>
 
-      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 }}>
-        <Mono key={pulse} style={{ fontSize: 64, lineHeight: 70, letterSpacing: -2 }}>
+      {/* Just the count: what it's worth shows after charging. */}
+      <View style={{ alignItems: 'center', marginTop: 16 }}>
+        <Mono key={pulse} style={{ fontSize: 72, lineHeight: 78, letterSpacing: -2 }}>
           {count}
-          <T style={{ fontSize: 22, fontWeight: '700', color: colors.mute }}>회</T>
+          <T style={{ fontSize: 24, fontWeight: '700', color: colors.mute }}>회</T>
         </Mono>
-        <View style={{ alignItems: 'flex-end', paddingBottom: 6 }}>
-          <Muted style={{ fontSize: 13 }}>충전 예정</Muted>
-          <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
-        </View>
-      </Row>
+      </View>
       <Muted style={styles.tip}>
         폰을 바닥에 세우고 몸 옆모습이 다 보이게 두면 가장 잘 세져요. 무리하지 말고, 아프면 바로 멈추세요.
       </Muted>
-      <Row style={styles.optionRow}>
-        <Muted style={styles.optionLabel}>구령</Muted>
-        <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {VOICE_MODES.map((v) => (
-            <Chip key={v.id} label={v.label} active={voice === v.id} onPress={() => update({ voice: v.id })} />
-          ))}
-        </Row>
-      </Row>
     </Screen>
   );
 }
@@ -140,7 +134,5 @@ export default function Workout() {
 const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   firstNote: { marginTop: 14, fontWeight: '700', color: colors.red },
-  tip: { fontSize: 12, lineHeight: 18, marginTop: 10 },
-  optionRow: { justifyContent: 'space-between', marginTop: 14, gap: 12 },
-  optionLabel: { fontSize: 12, fontWeight: '600' },
+  tip: { fontSize: 12, lineHeight: 18, marginTop: 10, textAlign: 'center' },
 });

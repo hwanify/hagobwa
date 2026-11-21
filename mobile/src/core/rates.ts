@@ -11,10 +11,14 @@ export const EXERCISE_LABEL: Record<ExerciseId, string> = {
   squat: '스쿼트',
 };
 
-/** Seconds of screen time one rep buys at "normal" difficulty. */
-export const BASE_SECONDS_PER_REP: Record<ExerciseId, number> = {
-  pushup: 60,
-  squat: 30,
+/**
+ * Screen time is only ever earned in whole minutes (iOS reports usage per minute anyway):
+ * `reps` of an exercise buy `minutes`. Leftover reps in a workout that don't complete a
+ * group earn nothing.
+ */
+export const RATES: Record<ExerciseId, Record<Difficulty, { reps: number; minutes: number }>> = {
+  pushup: { easy: { reps: 1, minutes: 2 }, normal: { reps: 1, minutes: 1 }, hard: { reps: 2, minutes: 1 } },
+  squat: { easy: { reps: 1, minutes: 1 }, normal: { reps: 2, minutes: 1 }, hard: { reps: 4, minutes: 1 } },
 };
 
 /** Seconds of screen time 1,000 steps buy at "normal" difficulty. */
@@ -30,19 +34,23 @@ export function difficultyMult(d: Difficulty): number {
   return DIFFICULTIES.find((x) => x.id === d)?.mult ?? 1;
 }
 
-export function secondsPerRep(exercise: ExerciseId, difficulty: Difficulty): number {
-  return Math.round(BASE_SECONDS_PER_REP[exercise] * difficultyMult(difficulty));
+/** "1회 = 1분", "2회 = 1분", "1회 = 2분" */
+export function rateLabel(exercise: ExerciseId, difficulty: Difficulty): string {
+  const r = RATES[exercise][difficulty];
+  return `${r.reps}회 = ${r.minutes}분`;
 }
 
 export function earnedSeconds(exercise: ExerciseId, reps: number, difficulty: Difficulty): number {
   if (!Number.isFinite(reps) || reps <= 0) return 0;
-  return Math.floor(reps) * secondsPerRep(exercise, difficulty);
+  const r = RATES[exercise][difficulty];
+  return Math.floor(Math.floor(reps) / r.reps) * r.minutes * 60;
 }
 
 /** Reps needed to buy at least `seconds` of screen time. */
 export function repsNeeded(seconds: number, exercise: ExerciseId, difficulty: Difficulty): number {
   if (seconds <= 0) return 0;
-  return Math.ceil(seconds / secondsPerRep(exercise, difficulty));
+  const r = RATES[exercise][difficulty];
+  return Math.ceil(seconds / 60 / r.minutes) * r.reps;
 }
 
 export function stepsSeconds(steps: number, difficulty: Difficulty): number {

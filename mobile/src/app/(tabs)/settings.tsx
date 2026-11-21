@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Chip, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
-import { formatDuration } from '@/core/format';
-import { DIFFICULTIES, secondsPerRep } from '@/core/rates';
+import { DIFFICULTIES, rateLabel } from '@/core/rates';
 import { VOICE_MODES } from '@/core/voice';
 import { say } from '@/platform/feedback';
 import { clearPicked } from '@/features/lock/LockPicker';
@@ -52,7 +51,7 @@ export default function Settings() {
       </Row>
 
       <H2 style={styles.section}>난이도</H2>
-      <Muted>푸시업 1회 = {formatDuration(secondsPerRep('pushup', s.difficulty))}, 스쿼트 1회 = {formatDuration(secondsPerRep('squat', s.difficulty))}</Muted>
+      <Muted>푸시업 {rateLabel('pushup', s.difficulty)}, 스쿼트 {rateLabel('squat', s.difficulty)}</Muted>
       <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
         <Segmented options={DIFFICULTIES} value={s.difficulty} onChange={(d) => s.updateSettings({ difficulty: d })} />
       </View>
