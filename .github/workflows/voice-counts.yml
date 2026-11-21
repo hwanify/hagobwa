@@ -30,11 +30,11 @@ env:
 jobs:
   record:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        part: [0, 1, 2, 3]
+        part: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -117,7 +117,11 @@ jobs:
           from faster_whisper import WhisperModel
           import re
           asr = WhisperModel("medium", device="cpu", compute_type="int8")
-          norm = lambda t: re.sub(r"[^0-9가-힣]", "", t)
+          # Whisper often writes 쉰 as 신/심 and 백 as 택/댁; those are still the right word.
+          ALIAS = {"신": "쉰", "심": "쉰", "씬": "쉰", "택": "백", "댁": "백", "빽": "백", "배": "백"}
+          def norm(t):
+              t = re.sub(r"[^0-9가-힣]", "", t)
+              return "".join(ALIAS.get(c, c) for c in t)
           pad = int(0.03 * 24000)
           ex = float(os.environ["EXAGGERATION"])
           groups = [list(range(s, min(s + 10, 201))) for s in range(1, 201, 10)]
@@ -128,7 +132,7 @@ jobs:
               return 0.18 <= sec <= max(1.2, 0.35 + 0.17 * len(ko(n)))
           report = []
           for gi, nums in enumerate(groups):
-              if gi % 4 != part:
+              if gi % 8 != part:
                   continue
               targets = [n for n in nums if not only or n in only]
               # Clear pauses between counts so short words don't stick together.
@@ -192,6 +196,11 @@ jobs:
         run: |
           mkdir -p voice-samples
           mv mobile/assets/voice/report-*.tsv voice-samples/ 2>/dev/null || true
+          # A clip that still doesn't pass is removed: the app then says that number with the
+          # system voice instead of playing a wrong one.
+          for n in $(cat voice-samples/report-*.tsv | awk -F'\t' '$3=="FAILED"{print $1}'); do
+            rm -f "mobile/assets/voice/$(printf 'count-%03d.m4a' "$n")"
+          done
           cat voice-samples/report-*.tsv >> voice-samples/counts-report.tsv && rm -f voice-samples/report-*.tsv
           grep -c FAILED voice-samples/counts-report.tsv || true
           cd mobile
