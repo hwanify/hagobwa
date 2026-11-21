@@ -303,11 +303,11 @@ describe('RepCounter', () => {
 });
 
 describe('voice', () => {
-  it('uses native Korean counts and mode lines', () => {
+  it('only counts, in native Korean up to 20', () => {
     expect(repLine('basic', 3, 10)).toBe('셋');
-    expect(repLine('drill', 5, 10)).toBe('다섯! 아직 안 끝났다!');
-    expect(repLine('pt', 7, 10)).toBe('일곱. 세 개만 더!');
-    expect(repLine('drill', 10, 10)).toBe('열! 동작 그만! 수고했다!');
+    expect(repLine('drill', 5, 10)).toBe('다섯!');
+    expect(repLine('pt', 7, 10)).toBe('일곱');
+    expect(repLine('mom', 10, 10)).toBe('열');
     expect(repLine('basic', 25, 30)).toBe('25');
   });
 });

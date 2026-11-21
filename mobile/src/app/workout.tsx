@@ -3,9 +3,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
+import { Button, Chip, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
+import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
-import { repLine } from '@/core/voice';
+import { repLine, VOICE_MODES } from '@/core/voice';
 import PoseCamera from '@/features/pose/PoseCamera';
 import { closeScreen, goHome } from '@/navigation';
 import { say, tapFeedback } from '@/platform/feedback';
@@ -64,8 +65,7 @@ export default function Workout() {
     else closeScreen();
   };
 
-  // Earnings are whole minutes, so a few reps may not be worth a minute yet.
-  const gain = earnedSeconds(exercise, count, difficulty);
+  const gainPreview = earnedSeconds(exercise, count, difficulty);
 
   return (
     <Screen
@@ -80,9 +80,9 @@ export default function Workout() {
           />
           <Button
             style={{ flex: 1.2 }}
-            label={count > 0 && gain === 0 ? '조금만 더' : '충전하기'}
+            label={count > 0 && gainPreview === 0 ? '조금만 더' : '충전하기'}
             onPress={finish}
-            disabled={gain === 0}
+            disabled={gainPreview === 0}
           />
         </Row>
       }
@@ -117,16 +117,27 @@ export default function Workout() {
         <PoseCamera exercise={exercise} onRep={addRep} />
       </View>
 
-      {/* Just the count: what it's worth shows after charging. */}
-      <View style={{ alignItems: 'center', marginTop: 16 }}>
-        <Mono key={pulse} style={{ fontSize: 72, lineHeight: 78, letterSpacing: -2 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 }}>
+        <Mono key={pulse} style={{ fontSize: 64, lineHeight: 70, letterSpacing: -2 }}>
           {count}
-          <T style={{ fontSize: 24, fontWeight: '700', color: colors.mute }}>회</T>
+          <T style={{ fontSize: 22, fontWeight: '700', color: colors.mute }}>회</T>
         </Mono>
-      </View>
+        <View style={{ alignItems: 'flex-end', paddingBottom: 6 }}>
+          <Muted style={{ fontSize: 13 }}>충전 예정</Muted>
+          <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
+        </View>
+      </Row>
       <Muted style={styles.tip}>
         폰을 바닥에 세우고 몸 옆모습이 다 보이게 두면 가장 잘 세져요. 무리하지 말고, 아프면 바로 멈추세요.
       </Muted>
+      <Row style={styles.optionRow}>
+        <Muted style={styles.optionLabel}>구령</Muted>
+        <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {VOICE_MODES.map((v) => (
+            <Chip key={v.id} label={v.label} active={voice === v.id} onPress={() => update({ voice: v.id })} />
+          ))}
+        </Row>
+      </Row>
     </Screen>
   );
 }
@@ -134,5 +145,7 @@ export default function Workout() {
 const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   firstNote: { marginTop: 14, fontWeight: '700', color: colors.red },
-  tip: { fontSize: 12, lineHeight: 18, marginTop: 10, textAlign: 'center' },
+  tip: { fontSize: 12, lineHeight: 18, marginTop: 10 },
+  optionRow: { justifyContent: 'space-between', marginTop: 14, gap: 12 },
+  optionLabel: { fontSize: 12, fontWeight: '600' },
 });

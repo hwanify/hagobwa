@@ -12,10 +12,10 @@ import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
 const SAMPLE_LINE = {
-  basic: '하나. 둘. 셋. 충전 완료.',
-  drill: '하나! 둘! 셋! 허리 펴라! 넷! 다섯! 아직 안 끝났다!',
-  pt: '하나. 둘. 좋아요, 자세 좋아요. 셋. 세 개만 더!',
-  mom: '하나. 둘. 그거 하고 폰 보는 거야, 알지? 셋.',
+  basic: '하나. 둘. 셋.',
+  drill: '하나! 둘! 셋!',
+  pt: '하나. 둘. 셋.',
+  mom: '하나. 둘. 셋.',
 } as const;
 
 /** Test builds: how the current usage window is doing (start, end, minutes iOS reported). */

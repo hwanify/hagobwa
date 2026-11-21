@@ -17,25 +17,10 @@ export function koCount(n: number): string {
   return NATIVE[n - 1] ?? String(n);
 }
 
-export function repLine(mode: VoiceMode, n: number, target: number): string {
+/** Counts out loud and nothing else; the voice mode only changes the tone. */
+export function repLine(mode: VoiceMode, n: number, _target = 0): string {
   const w = koCount(n);
-  const last = target > 0 && n >= target;
-  switch (mode) {
-    case 'drill':
-      if (last) return `${w}! 동작 그만! 수고했다!`;
-      if (n % 5 === 0) return `${w}! 아직 안 끝났다!`;
-      return `${w}!`;
-    case 'pt':
-      if (last) return `${w}. 완벽해요, 오늘도 해냈어요!`;
-      if (target - n === 3) return `${w}. 세 개만 더!`;
-      return w;
-    case 'mom':
-      if (last) return `${w}. 다 했으면 이제 조금만 봐라.`;
-      if (n % 5 === 0) return `${w}. 폰 좀 그만 보고.`;
-      return w;
-    default:
-      return last ? `${w}. 충전 완료.` : w;
-  }
+  return mode === 'drill' ? `${w}!` : w;
 }
 
 export function formHint(mode: VoiceMode): string {
