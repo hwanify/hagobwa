@@ -9,6 +9,10 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: '다시 만들 숫자 (쉼표로 구분, 비우면 전부)'
+        default: ''
   push:
     branches: [main]
     paths:
@@ -20,6 +24,8 @@ permissions:
 env:
   SPEAKER: '116'
   EXAGGERATION: '0.8'
+  # Numbers to redo (only their groups are re-recorded and only these files replaced).
+  ONLY: ${{ inputs.only || '2,3,10,27,48,59,71,76,82,91,97,98,99,129,130,151,181,188,190,199' }}
 
 jobs:
   record:
@@ -100,19 +106,30 @@ jobs:
           tts = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
           ex = float(os.environ["EXAGGERATION"])
           groups = [list(range(s, min(s + 10, 201))) for s in range(1, 201, 10)]
+          only = {int(x) for x in os.environ.get("ONLY", "").split(",") if x.strip()}
+          if only:
+              groups = [g for g in groups if only & set(g)]
+          def good(n, sec):
+              return 0.28 <= sec <= max(1.2, 0.35 + 0.17 * len(ko(n)))
           report = []
           for gi, nums in enumerate(groups):
               if gi % 4 != part:
                   continue
+              targets = [n for n in nums if not only or n in only]
               text = " ".join(f"{ko(n)}!" for n in nums)
               done = False
-              for attempt in range(8):
-                  torch.manual_seed(2000 + attempt)
+              for attempt in range(12):
+                  torch.manual_seed(2000 + attempt + (100 if only else 0))
                   y = tts.generate(text, language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4).squeeze(0).numpy()
                   segs = pieces(y, tts.sr, len(nums))
+                  # The pieces we need must also have a plausible length for their word.
+                  if segs and attempt < 11 and not all(good(n, (b - a) / tts.sr) for n, (a, b) in zip(nums, segs) if n in targets):
+                      segs = None
                   if segs:
                       pad = int(0.03 * tts.sr)
                       for n, (a, b) in zip(nums, segs):
+                          if n not in targets:
+                              continue
                           sf.write(f"out/count-{n:03d}.wav", y[max(0, a - pad): b + pad], tts.sr)
                           report.append(f"{n}\t{ko(n)}\tdur={(b - a) / tts.sr:.2f}\ttries={attempt + 1}")
                       done = True
@@ -150,7 +167,7 @@ jobs:
         run: |
           mkdir -p voice-samples
           mv mobile/assets/voice/report-*.tsv voice-samples/ 2>/dev/null || true
-          cat voice-samples/report-*.tsv | sort -n > voice-samples/counts-report.tsv && rm -f voice-samples/report-*.tsv
+          cat voice-samples/report-*.tsv >> voice-samples/counts-report.tsv && rm -f voice-samples/report-*.tsv
           grep -c FAILED voice-samples/counts-report.tsv || true
           cd mobile
           {
