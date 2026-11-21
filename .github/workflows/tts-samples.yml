@@ -64,7 +64,7 @@ jobs:
           git clone --recursive --depth 1 https://github.com/FunAudioLLM/CosyVoice.git
           cd CosyVoice
           pip install --quiet torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
-          grep -v -E '^(torch|torchaudio|onnxruntime-gpu|tensorrt|deepspeed|fastapi|gradio|openai-whisper)' requirements.txt > req.txt || true
+          grep -v -E '^(torch|torchaudio|onnxruntime-gpu|tensorrt|deepspeed|fastapi|gradio)' requirements.txt > req.txt || true
           pip install --quiet -r req.txt || pip install --quiet -r req.txt --no-deps
           pip install --quiet onnxruntime modelscope huggingface_hub
           python - <<'PY'
