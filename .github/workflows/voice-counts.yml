@@ -45,7 +45,14 @@ jobs:
       - name: Which counts to redo
         run: |
           ONLY="$ONLY_INPUT"
-          if [ -z "$ONLY" ] && [ -f repo/voice-samples/verify-bad.txt ]; then ONLY=$(tr -d ' \n' < repo/voice-samples/verify-bad.txt); fi
+          # By default redo the counts that have no clip yet (removed because they failed).
+          if [ -z "$ONLY" ]; then
+            for n in $(seq 1 200); do
+              [ -f "repo/mobile/assets/voice/$(printf 'count-%03d.m4a' "$n")" ] || ONLY="$ONLY$n,"
+            done
+            ONLY="${ONLY%,}"
+          fi
+          if [ -z "$ONLY" ]; then echo "Nothing to redo"; ONLY=0; fi
           echo "ONLY=$ONLY" >> "$GITHUB_ENV"
           echo "Redo: ${ONLY:-all}"
       - name: Install
@@ -103,7 +110,8 @@ jobs:
               iv = librosa.effects.split(y, top_db=30, frame_length=1024, hop_length=256)
               merged = []
               for a, b in iv:
-                  if merged and a - merged[-1][1] < int(0.12 * sr):
+                  # Short gaps are inside a word (백…하나); the pauses between counts are longer.
+                  if merged and a - merged[-1][1] < int(0.2 * sr):
                       merged[-1][1] = b
                   else:
                       merged.append([a, b])
@@ -138,6 +146,7 @@ jobs:
               # breath or two counts stuck together don't shift the rest.
               best = {}
               expect = {norm(ko(n)): n for n in nums}
+              expect.update({str(n): n for n in nums})
               for attempt in range(12):
                   torch.manual_seed(3000 + attempt)
                   y = tts.generate(text, language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4).squeeze(0).numpy()
