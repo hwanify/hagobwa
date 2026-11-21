@@ -111,12 +111,12 @@ jobs:
               if n == 100: return '백'
               if n < 200: return '백' + ko(n-100)
               return '이백'
-          def pieces(y, sr):
+          def pieces(y, sr, gap=0.2):
               iv = librosa.effects.split(y, top_db=30, frame_length=1024, hop_length=256)
               merged = []
               for a, b in iv:
                   # Short gaps are inside a word (백…하나); the pauses between counts are longer.
-                  if merged and a - merged[-1][1] < int(0.2 * sr):
+                  if merged and a - merged[-1][1] < int(gap * sr):
                       merged[-1][1] = b
                   else:
                       merged.append([a, b])
@@ -130,6 +130,8 @@ jobs:
           ALIAS = {"신": "쉰", "심": "쉰", "씬": "쉰", "택": "백", "댁": "백", "빽": "백", "배": "백"}
           def norm(t):
               t = re.sub(r"[^0-9가-힣]", "", t)
+              # 일흔 is pronounced [이른], and Whisper spells it that way.
+              t = t.replace("이른", "일흔")
               return "".join(ALIAS.get(c, c) for c in t)
           pad = int(0.03 * 24000)
           ex = float(os.environ["EXAGGERATION"])
@@ -158,7 +160,8 @@ jobs:
               for attempt in range(12):
                   torch.manual_seed(3000 + attempt)
                   y = tts.generate(text, language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4).squeeze(0).numpy()
-                  segs = pieces(y, tts.sr) or []
+                  # Repeats of one word come out close together: split at shorter gaps.
+                  segs = pieces(y, tts.sr, 0.06 if len(nums) == 1 else 0.2) or []
                   heard_all = []
                   for a, b in segs:
                       clip = y[max(0, a - pad): b + pad]
@@ -184,11 +187,15 @@ jobs:
           open(f"out/report-{part}.tsv", "w").write("\n".join(report) + "\n")
           PY
       - name: Trim and encode
+        env:
+          PART: ${{ matrix.part }}
         run: |
+          shopt -s nullglob
+          touch out/report-$PART.tsv
           for f in out/*.wav; do
             ffmpeg -loglevel error -y -i "$f" -af "loudnorm=I=-14:TP=-1" -ac 1 -ar 24000 -c:a aac -b:a 64k "${f%.wav}.m4a"
           done
-          ls out/*.m4a | wc -l
+          ls out | grep -c m4a || true
           grep -c FAILED out/report-*.tsv || true
       - uses: actions/upload-artifact@v4
         with:
@@ -199,6 +206,8 @@ jobs:
 
   commit:
     needs: record
+    # Keep whatever the other parts got even if one part failed.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

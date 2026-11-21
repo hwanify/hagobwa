@@ -44,7 +44,7 @@ jobs:
               return np.frombuffer(raw, dtype=np.float32)
           ALIAS = {"신": "쉰", "심": "쉰", "씬": "쉰", "택": "백", "댁": "백", "빽": "백", "배": "백"}
           def norm(t):
-              t = re.sub(r"[^0-9가-힣]", "", t)
+              t = re.sub(r"[^0-9가-힣]", "", t).replace("이른", "일흔")
               return "".join(ALIAS.get(c, c) for c in t)
           asr = WhisperModel("medium", device="cpu", compute_type="int8")
           rows, bad = [], []
