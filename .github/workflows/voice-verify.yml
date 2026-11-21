@@ -46,6 +46,24 @@ jobs:
           def norm(t):
               t = re.sub(r"[^0-9가-힣]", "", t).replace("이른", "일흔")
               return "".join(ALIAS.get(c, c) for c in t)
+          import difflib
+          WORDS = {ko(m): m for m in range(1, 201)}
+          def jamo(t):
+              out = []
+              for c in t:
+                  o = ord(c) - 0xAC00
+                  if 0 <= o < 11172:
+                      out += [chr(0x1100 + o // 588), chr(0x1161 + (o % 588) // 28)] + ([chr(0x11A7 + o % 28)] if o % 28 else [])
+                  else:
+                      out.append(c)
+              return "".join(out)
+          def judge(n, h):
+              # Digits count as the word; a close spelling passes unless it's nearer another number.
+              h = re.sub(r"\d+", lambda m: ko(int(m.group())) if 1 <= int(m.group()) <= 200 else m.group(), h)
+              if h == ko(n): return True
+              if h in WORDS: return False
+              sim = lambda m: difflib.SequenceMatcher(None, jamo(h), jamo(ko(m))).ratio()
+              return sim(n) >= 0.7 and max(range(1, 201), key=sim) == n
           asr = WhisperModel("medium", device="cpu", compute_type="int8")
           rows, bad = [], []
           import os
@@ -56,7 +74,7 @@ jobs:
               y = np.concatenate([np.zeros(4000, np.float32), y, np.zeros(4000, np.float32)])
               segs, _ = asr.transcribe(y, language="ko", beam_size=5, vad_filter=False)
               heard = norm("".join(s.text for s in segs))
-              ok = heard in (norm(ko(n)), str(n))
+              ok = judge(n, heard)
               rows.append(f"{n}\t{ko(n)}\t{heard}\t{'ok' if ok else 'CHECK'}\t{len(y)/16000:.2f}")
               if not ok: bad.append(n)
               print(rows[-1], flush=True)
