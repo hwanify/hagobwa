@@ -13,6 +13,10 @@ on:
       only:
         description: '다시 만들 숫자 (쉼표로 구분, 비우면 전부)'
         default: ''
+      repeat:
+        description: '한 숫자씩 여러 번 반복해서 녹음 (짧은 단어용)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -26,6 +30,7 @@ env:
   EXAGGERATION: '0.8'
   # Numbers to redo (only their groups are re-recorded and only these files replaced).
   ONLY_INPUT: ${{ inputs.only }}
+  REPEAT: ${{ inputs.repeat && '1' || '' }}
 
 jobs:
   record:
@@ -132,6 +137,9 @@ jobs:
           only = {int(x) for x in os.environ.get("ONLY", "").split(",") if x.strip()}
           if only:
               groups = [g for g in groups if only & set(g)]
+          if only and os.environ.get("REPEAT"):
+              # One number said several times ("넷! ... 넷! ... 넷!"): any clean piece will do.
+              groups = [[n] for n in sorted(only)]
           def good(n, sec):
               return 0.18 <= sec <= max(1.2, 0.35 + 0.17 * len(ko(n)))
           report = []
@@ -140,7 +148,7 @@ jobs:
                   continue
               targets = [n for n in nums if not only or n in only]
               # Clear pauses between counts so short words don't stick together.
-              text = " ... ".join(f"{ko(n)}!" for n in nums)
+              text = " ... ".join(f"{ko(n)}!" for n in (nums * 6 if len(nums) == 1 else nums))
               # Keep every correctly heard piece from any take, so a number only needs to come
               # out right once. Pieces are matched by what Whisper hears, in order, so an extra
               # breath or two counts stuck together don't shift the rest.
