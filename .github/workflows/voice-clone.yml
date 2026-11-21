@@ -35,7 +35,9 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           pip install --quiet torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet chatterbox-tts datasets soundfile librosa
+          pip install --quiet chatterbox-tts
+          # chatterbox pins numpy 1.x: keep pyarrow/datasets on versions built for it
+          pip install --quiet "pyarrow==17.0.0" "datasets<4" soundfile librosa
       - name: Pick deep male reference voices (Zeroth Korean, CC BY 4.0)
         run: |
           mkdir -p refs
