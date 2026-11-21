@@ -69,6 +69,7 @@ export default function Workout() {
 
   return (
     <Screen
+      scroll={false}
       footer={
         <Row style={{ gap: 8 }}>
           <Button
@@ -113,12 +114,13 @@ export default function Workout() {
         <T style={styles.firstNote}>첫 충전이에요. 하고 싶은 만큼 하고 충전하기를 누르세요.</T>
       )}
 
-      <View style={{ marginTop: 14 }}>
-        <PoseCamera exercise={exercise} onRep={addRep} />
+      {/* The camera takes whatever height is left, so everything fits on one screen. */}
+      <View style={{ flex: 1, marginTop: 12 }}>
+        <PoseCamera exercise={exercise} onRep={addRep} fill />
       </View>
 
-      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 }}>
-        <Mono key={pulse} style={{ fontSize: 64, lineHeight: 70, letterSpacing: -2 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+        <Mono key={pulse} style={{ fontSize: 56, lineHeight: 62, letterSpacing: -2 }}>
           {count}
           <T style={{ fontSize: 22, fontWeight: '700', color: colors.mute }}>회</T>
         </Mono>
@@ -127,9 +129,6 @@ export default function Workout() {
           <T style={{ fontSize: 18, fontWeight: '800', color: colors.red }}>+{formatDuration(gainPreview)}</T>
         </View>
       </Row>
-      <Muted style={styles.tip}>
-        폰을 바닥에 세우고 몸 옆모습이 다 보이게 두면 가장 잘 세져요. 무리하지 말고, 아프면 바로 멈추세요.
-      </Muted>
       <Row style={styles.optionRow}>
         <Muted style={styles.optionLabel}>구령</Muted>
         <Row style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -145,7 +144,6 @@ export default function Workout() {
 const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   firstNote: { marginTop: 14, fontWeight: '700', color: colors.red },
-  tip: { fontSize: 12, lineHeight: 18, marginTop: 10 },
-  optionRow: { justifyContent: 'space-between', marginTop: 14, gap: 12 },
+  optionRow: { justifyContent: 'space-between', marginTop: 10, marginBottom: 4, gap: 12 },
   optionLabel: { fontSize: 12, fontWeight: '600' },
 });

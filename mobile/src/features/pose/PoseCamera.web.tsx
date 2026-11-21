@@ -28,7 +28,7 @@ interface Landmarker {
  * Browser rep counter: webcam + MediaPipe Pose Landmarker, all on-device.
  * Frames never leave the browser.
  */
-export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
+export default function PoseCamera({ exercise, onRep, fill = false }: PoseCameraProps & { fill?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
@@ -132,7 +132,7 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
   }
 
   return (
-    <View style={styles.frame}>
+    <View style={[styles.frame, fill && styles.fill]}>
       <video ref={videoRef} playsInline muted style={mediaStyle} />
       <canvas ref={canvasRef} style={mediaStyle} />
       {status !== 'running' ? (
@@ -198,6 +198,8 @@ const mediaStyle: React.CSSProperties = {
 
 const styles = StyleSheet.create({
   frame: { width: '100%', aspectRatio: 4 / 3, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.ink },
+  /** Take the height the parent gives instead of a fixed aspect ratio. */
+  fill: { flex: 1, aspectRatio: undefined, minHeight: 200 },
   overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 20 },
   startBtn: { backgroundColor: colors.paper, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
   startText: { fontWeight: '700', fontSize: 14 },

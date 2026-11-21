@@ -27,7 +27,7 @@ type Msg =
  * it posts joint positions back here and the shared, unit-tested RepCounter counts reps.
  * Video stays on the device. The model (~6 MB) downloads once and is then cached.
  */
-export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
+export default function PoseCamera({ exercise, onRep, fill = false }: PoseCameraProps & { fill?: boolean }) {
   const webRef = useRef<WebView>(null);
   const counterRef = useRef(new RepCounter(exercise));
   const onRepRef = useRef(onRep);
@@ -117,7 +117,7 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
   }, []);
 
   return (
-    <View style={styles.frame}>
+    <View style={[styles.frame, fill && styles.fill]}>
       <CameraWebView
         ref={webRef}
         source={{ html: POSE_HTML, baseUrl: 'https://hagobwa.app/' }}
@@ -137,7 +137,7 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
           <Pressable accessibilityRole="button" onPress={start} disabled={status === 'loading'} style={styles.startBtn}>
             <T style={styles.startText}>{status === 'loading' ? '준비 중...' : '카메라로 세기'}</T>
           </Pressable>
-          <T style={styles.overlayNote}>{hint || '폰을 바닥에 세우고 몸 전체가 보이게 해주세요. 영상은 저장하지 않아요.'}</T>
+          <T style={styles.overlayNote}>{hint || '폰을 바닥에 세우고 몸 옆모습이 다 보이게 해주세요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
         </View>
       ) : (
         <View style={styles.bar}>
@@ -158,6 +158,8 @@ export default function PoseCamera({ exercise, onRep }: PoseCameraProps) {
 
 const styles = StyleSheet.create({
   frame: { width: '100%', aspectRatio: 3 / 4, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.ink },
+  /** Take the height the parent gives instead of a fixed aspect ratio. */
+  fill: { flex: 1, aspectRatio: undefined, minHeight: 200 },
   web: { flex: 1, backgroundColor: colors.ink },
   overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 20, backgroundColor: 'rgba(22,24,27,0.55)' },
   startBtn: { backgroundColor: colors.paper, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
