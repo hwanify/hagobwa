@@ -41,7 +41,7 @@ jobs:
           pip install --quiet "pyarrow==17.0.0" "datasets<4" soundfile librosa
       - name: Reference voice
         run: |
-          python - <<'PY'
+          cat > ref.py <<'PY'
           import os, numpy as np, soundfile as sf
           from datasets import load_dataset, Audio
           want = os.environ["SPEAKER"]
@@ -60,14 +60,19 @@ jobs:
           sf.write("ref.wav", y, 24000)
           print("reference clips:", len(clips))
           PY
-      - name: Record
+          # Streaming the corpus occasionally aborts; try a few times.
+          for i in 1 2 3; do python ref.py && break; sleep 10; done
+          test -f ref.wav
+      - name: Record (checked by speech recognition, retried until right)
         env:
           PART: ${{ matrix.part }}
         run: |
+          pip install --quiet faster-whisper
           mkdir -p out
           python - <<'PY'
-          import os, torch, torchaudio
+          import os, re, torch, torchaudio, numpy as np, librosa, soundfile as sf
           from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+          from faster_whisper import WhisperModel
           NATIVE = ['하나','둘','셋','넷','다섯','여섯','일곱','여덟','아홉','열','열하나','열둘','열셋','열넷','열다섯','열여섯','열일곱','열여덟','열아홉','스물']
           TENS = ['', '열', '스물', '서른', '마흔', '쉰', '예순', '일흔', '여든', '아흔']
           ONES = ['', '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉']
@@ -77,27 +82,59 @@ jobs:
               if n == 100: return '백'
               if n < 200: return '백' + ko(n-100)
               return '이백'
+          def first_utterance(y, sr):
+              # The model sometimes keeps talking after the word: keep the first spoken part only.
+              iv = librosa.effects.split(y, top_db=32, frame_length=1024, hop_length=256)
+              if len(iv) == 0: return y
+              s, e = iv[0]
+              for a, b in iv[1:]:
+                  if a - e < int(0.18 * sr): e = b
+                  else: break
+              pad = int(0.04 * sr)
+              return y[max(0, s - pad): min(len(y), e + pad)]
+          norm = lambda t: re.sub(r"[^0-9가-힣]", "", t)
           part = int(os.environ["PART"])
-          model = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
+          tts = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
+          asr = WhisperModel("small", device="cpu", compute_type="int8")
           ex = float(os.environ["EXAGGERATION"])
+          report = []
           for n in range(1 + part, 201, 4):
-              torch.manual_seed(1234)
-              wav = model.generate(f"{ko(n)}!", language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4)
-              torchaudio.save(f"out/count-{n:03d}.wav", wav, model.sr)
-              print(n, ko(n), flush=True)
+              word = ko(n)
+              max_len = 0.45 + 0.28 * len(word)
+              best = None
+              for attempt in range(8):
+                  torch.manual_seed(1000 + attempt)
+                  wav = tts.generate(f"{word}!", language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4)
+                  y = first_utterance(wav.squeeze(0).numpy(), tts.sr)
+                  dur = len(y) / tts.sr
+                  y16 = librosa.resample(y, orig_sr=tts.sr, target_sr=16000)
+                  segs, _ = asr.transcribe(y16, language="ko", beam_size=5, vad_filter=False)
+                  heard = norm("".join(sg.text for sg in segs))
+                  ok = (heard == norm(word) or heard == str(n)) and 0.2 < dur <= max_len
+                  score = (ok, -abs(dur - max_len * 0.6))
+                  if best is None or score > best[0]:
+                      best = (score, y, heard, dur, attempt)
+                  if ok:
+                      break
+              (_, y, heard, dur, attempt) = best
+              sf.write(f"out/count-{n:03d}.wav", y, tts.sr)
+              report.append(f"{n}\t{word}\theard={heard}\tdur={dur:.2f}\ttries={attempt+1}\tok={best[0][0]}")
+              print(report[-1], flush=True)
+          open(f"out/report-{part}.tsv", "w").write("\n".join(report) + "\n")
           PY
       - name: Trim and encode
         run: |
           for f in out/*.wav; do
-            ffmpeg -loglevel error -y -i "$f" \
-              -af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-14:TP=-1" \
-              -ac 1 -ar 24000 -c:a aac -b:a 64k "${f%.wav}.m4a"
+            ffmpeg -loglevel error -y -i "$f" -af "loudnorm=I=-14:TP=-1" -ac 1 -ar 24000 -c:a aac -b:a 64k "${f%.wav}.m4a"
           done
           ls out/*.m4a | wc -l
+          grep -c "ok=False" out/report-*.tsv || true
       - uses: actions/upload-artifact@v4
         with:
           name: counts-${{ matrix.part }}
-          path: out/*.m4a
+          path: |
+            out/*.m4a
+            out/report-*.tsv
 
   commit:
     needs: record
@@ -111,6 +148,10 @@ jobs:
           merge-multiple: true
       - name: Write counts.ts and commit
         run: |
+          mkdir -p voice-samples
+          mv mobile/assets/voice/report-*.tsv voice-samples/ 2>/dev/null || true
+          cat voice-samples/report-*.tsv | sort -n > voice-samples/counts-report.tsv && rm -f voice-samples/report-*.tsv
+          grep -c "ok=False" voice-samples/counts-report.tsv || true
           cd mobile
           {
             echo "// Generated by .github/workflows/voice-counts.yml — recorded counts 1-200."
@@ -126,8 +167,8 @@ jobs:
           cd ..
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mobile/assets/voice mobile/src/features/voice/counts.ts
+          git add mobile/assets/voice mobile/src/features/voice/counts.ts voice-samples
           git diff --cached --quiet && exit 0
-          git commit -m "Recorded rep counts 1-200"
+          git commit -m "Recorded rep counts 1-200 (checked by speech recognition)"
           git pull --rebase origin main
           git push origin HEAD:main
