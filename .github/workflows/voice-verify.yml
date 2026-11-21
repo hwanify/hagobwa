@@ -1,0 +1,69 @@
+# Listens to every recorded count with speech recognition (faster-whisper) and lists the
+# clips that don't sound like their number (e.g. two counts stuck together).
+name: 구령 음성 검사
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/voice-verify.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install --quiet faster-whisper
+      - name: Transcribe all counts
+        run: |
+          python - <<'PY'
+          import re, subprocess, numpy as np
+          from faster_whisper import WhisperModel
+          NATIVE = ['하나','둘','셋','넷','다섯','여섯','일곱','여덟','아홉','열','열하나','열둘','열셋','열넷','열다섯','열여섯','열일곱','열여덟','열아홉','스물']
+          TENS = ['', '열', '스물', '서른', '마흔', '쉰', '예순', '일흔', '여든', '아흔']
+          ONES = ['', '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉']
+          def ko(n):
+              if n <= 20: return NATIVE[n-1]
+              if n < 100: return TENS[n//10] + ONES[n%10]
+              if n == 100: return '백'
+              if n < 200: return '백' + ko(n-100)
+              return '이백'
+          def load(path):
+              raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], capture_output=True).stdout
+              return np.frombuffer(raw, dtype=np.float32)
+          norm = lambda t: re.sub(r"[^0-9가-힣]", "", t)
+          asr = WhisperModel("medium", device="cpu", compute_type="int8")
+          rows, bad = [], []
+          for n in range(1, 201):
+              y = load(f"mobile/assets/voice/count-{n:03d}.m4a")
+              y = np.concatenate([np.zeros(4000, np.float32), y, np.zeros(4000, np.float32)])
+              segs, _ = asr.transcribe(y, language="ko", beam_size=5, vad_filter=False, initial_prompt="하나 둘 셋 넷 다섯")
+              heard = norm("".join(s.text for s in segs))
+              ok = heard in (norm(ko(n)), str(n))
+              rows.append(f"{n}\t{ko(n)}\t{heard}\t{'ok' if ok else 'CHECK'}\t{len(y)/16000:.2f}")
+              if not ok: bad.append(n)
+              print(rows[-1], flush=True)
+          open("voice-samples/verify.tsv", "w").write("\n".join(rows) + "\n")
+          open("voice-samples/verify-bad.txt", "w").write(",".join(map(str, bad)) + "\n")
+          print("CHECK:", len(bad), bad)
+          PY
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add voice-samples/verify.tsv voice-samples/verify-bad.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Voice count check report [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
