@@ -87,7 +87,7 @@ jobs:
           python - <<'PY'
           # Saying one word alone makes the model ramble; a run of counts ("하나! 둘! … 열!")
           # comes out clean, like the sample that was picked. Record ten at a time and cut
-          # at the pauses; retry until there are exactly ten pieces.
+          # at the pauses; each piece is kept only if Whisper hears the right number.
           import os, torch, numpy as np, librosa, soundfile as sf
           from chatterbox.mtl_tts import ChatterboxMultilingualTTS
           NATIVE = ['하나','둘','셋','넷','다섯','여섯','일곱','여덟','아홉','열','열하나','열둘','열셋','열넷','열다섯','열여섯','열일곱','열여덟','열아홉','스물']
@@ -99,19 +99,15 @@ jobs:
               if n == 100: return '백'
               if n < 200: return '백' + ko(n-100)
               return '이백'
-          def pieces(y, sr, want):
-              for top_db in (30, 27, 33, 24, 36, 40):
-                  iv = librosa.effects.split(y, top_db=top_db, frame_length=1024, hop_length=256)
-                  merged = []
-                  for a, b in iv:
-                      if merged and a - merged[-1][1] < int(0.12 * sr):
-                          merged[-1][1] = b
-                      else:
-                          merged.append([a, b])
-                  merged = [m for m in merged if m[1] - m[0] > int(0.12 * sr)]
-                  if len(merged) == want:
-                      return merged
-              return None
+          def pieces(y, sr):
+              iv = librosa.effects.split(y, top_db=30, frame_length=1024, hop_length=256)
+              merged = []
+              for a, b in iv:
+                  if merged and a - merged[-1][1] < int(0.12 * sr):
+                      merged[-1][1] = b
+                  else:
+                      merged.append([a, b])
+              return [m for m in merged if m[1] - m[0] > int(0.12 * sr)]
           part = int(os.environ["PART"])
           tts = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
           from faster_whisper import WhisperModel
@@ -137,35 +133,37 @@ jobs:
               targets = [n for n in nums if not only or n in only]
               # Clear pauses between counts so short words don't stick together.
               text = " ... ".join(f"{ko(n)}!" for n in nums)
-              best = None  # (verified count, pieces, y)
+              # Keep every correctly heard piece from any take, so a number only needs to come
+              # out right once. Pieces are matched by what Whisper hears, in order, so an extra
+              # breath or two counts stuck together don't shift the rest.
+              best = {}
+              expect = {norm(ko(n)): n for n in nums}
               for attempt in range(12):
                   torch.manual_seed(3000 + attempt)
                   y = tts.generate(text, language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4).squeeze(0).numpy()
-                  segs = pieces(y, tts.sr, len(nums))
-                  if not segs:
-                      continue
-                  verified = {}
-                  for n, (a, b) in zip(nums, segs):
-                      if n not in targets or not good(n, (b - a) / tts.sr):
-                          continue
+                  segs = pieces(y, tts.sr) or []
+                  heard_all = []
+                  for a, b in segs:
                       clip = y[max(0, a - pad): b + pad]
                       y16 = librosa.resample(clip, orig_sr=tts.sr, target_sr=16000)
                       y16 = np.concatenate([np.zeros(4000, np.float32), y16.astype(np.float32), np.zeros(4000, np.float32)])
                       out, _ = asr.transcribe(y16, language="ko", beam_size=5, vad_filter=False)
                       heard = norm("".join(x.text for x in out))
-                      if heard in (norm(ko(n)), str(n)):
-                          verified[n] = clip
-                  if best is None or len(verified) > len(best):
-                      best = verified
+                      heard_all.append(heard)
+                      n = expect.get(heard)
+                      if n is None or n not in targets or n in best or not good(n, (b - a) / tts.sr):
+                          continue
+                      best[n] = clip
+                  print("  take", attempt, len(segs), "pieces:", " ".join(heard_all), "| have", len(best), "/", len(targets), flush=True)
                   if len(best) == len(targets):
                       break
-              for n, clip in (best or {}).items():
+              for n, clip in best.items():
                   sf.write(f"out/count-{n:03d}.wav", clip, tts.sr)
                   report.append(f"{n}\t{ko(n)}\tverified")
-              missing = [n for n in targets if n not in (best or {})]
+              missing = [n for n in targets if n not in best]
               for n in missing:
                   report.append(f"{n}\t{ko(n)}\tFAILED")
-              print(nums[0], "-", nums[-1], "verified", len(best or {}), "/", len(targets), flush=True)
+              print(nums[0], "-", nums[-1], "verified", len(best), "/", len(targets), flush=True)
           open(f"out/report-{part}.tsv", "w").write("\n".join(report) + "\n")
           PY
       - name: Trim and encode
