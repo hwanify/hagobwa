@@ -84,12 +84,7 @@ export default function Lock() {
             <T style={{ fontWeight: '700' }}>잠글 앱 고르기</T>
           </Pressable>
         ) : (
-          <>
-            <LockedAppList />
-            <Muted style={{ fontSize: 12, marginTop: 8 }}>
-              편집을 누르면 지금 잠근 앱이 체크된 채로 열려요. 추가하거나 빼고 완료를 누르세요.
-            </Muted>
-          </>
+          <LockedAppList />
         )
       ) : (
         LOCKABLE_APPS.map((a, i) => {
@@ -108,7 +103,6 @@ export default function Lock() {
       )}
       {picker.element}
 
-      <Muted style={{ fontSize: 12, marginTop: 24, lineHeight: 18 }}>{blocker.description}</Muted>
     </Screen>
   );
 }
