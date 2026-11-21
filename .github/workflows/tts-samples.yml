@@ -28,6 +28,7 @@ jobs:
           python-version: '3.10'
       - name: Install MeloTTS
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           pip install --quiet git+https://github.com/myshell-ai/MeloTTS.git
           python -m unidic download
       - name: Generate
@@ -61,6 +62,7 @@ jobs:
           python-version: '3.10'
       - name: Install CosyVoice
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           git clone --recursive --depth 1 https://github.com/FunAudioLLM/CosyVoice.git
           cd CosyVoice
           pip install --quiet torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
