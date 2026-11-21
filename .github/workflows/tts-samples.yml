@@ -4,6 +4,10 @@
 #   - CosyVoice-300M-SFT (Apache-2.0) with its built-in Korean female speaker
 name: 음성 샘플 만들기 (오픈소스 TTS)
 
+concurrency:
+  group: tts-samples
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -67,7 +71,9 @@ jobs:
           cd CosyVoice
           pip install --quiet torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
           grep -v -E '^(torch|torchaudio|onnxruntime-gpu|tensorrt|deepspeed|fastapi|gradio)' requirements.txt > req.txt || true
-          pip install --quiet -r req.txt || pip install --quiet -r req.txt --no-deps
+          # openai-whisper's old setup.py needs pkg_resources (setuptools < 70) at build time.
+          pip install --quiet "setuptools<70" wheel
+          pip install --quiet --no-build-isolation -r req.txt
           pip install --quiet onnxruntime modelscope huggingface_hub
           python - <<'PY'
           from huggingface_hub import snapshot_download
