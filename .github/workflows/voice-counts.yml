@@ -25,7 +25,7 @@ env:
   SPEAKER: '116'
   EXAGGERATION: '0.8'
   # Numbers to redo (only their groups are re-recorded and only these files replaced).
-  ONLY: ${{ inputs.only || '2,3,10,27,48,59,71,76,82,91,97,98,99,129,130,151,181,188,190,199' }}
+  ONLY_INPUT: ${{ inputs.only }}
 
 jobs:
   record:
@@ -39,9 +39,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - name: Which counts to redo
+        run: |
+          ONLY="$ONLY_INPUT"
+          if [ -z "$ONLY" ] && [ -f repo/voice-samples/verify-bad.txt ]; then ONLY=$(tr -d ' \n' < repo/voice-samples/verify-bad.txt); fi
+          echo "ONLY=$ONLY" >> "$GITHUB_ENV"
+          echo "Redo: ${ONLY:-all}"
       - name: Install
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install --quiet faster-whisper
           pip install --quiet torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet chatterbox-tts
           pip install --quiet "pyarrow==17.0.0" "datasets<4" soundfile librosa
@@ -104,39 +114,54 @@ jobs:
               return None
           part = int(os.environ["PART"])
           tts = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
+          from faster_whisper import WhisperModel
+          import re
+          asr = WhisperModel("medium", device="cpu", compute_type="int8")
+          norm = lambda t: re.sub(r"[^0-9가-힣]", "", t)
+          pad = int(0.03 * 24000)
           ex = float(os.environ["EXAGGERATION"])
           groups = [list(range(s, min(s + 10, 201))) for s in range(1, 201, 10)]
           only = {int(x) for x in os.environ.get("ONLY", "").split(",") if x.strip()}
           if only:
               groups = [g for g in groups if only & set(g)]
           def good(n, sec):
-              return 0.28 <= sec <= max(1.2, 0.35 + 0.17 * len(ko(n)))
+              return 0.18 <= sec <= max(1.2, 0.35 + 0.17 * len(ko(n)))
           report = []
           for gi, nums in enumerate(groups):
               if gi % 4 != part:
                   continue
               targets = [n for n in nums if not only or n in only]
-              text = " ".join(f"{ko(n)}!" for n in nums)
-              done = False
+              # Clear pauses between counts so short words don't stick together.
+              text = " ... ".join(f"{ko(n)}!" for n in nums)
+              best = None  # (verified count, pieces, y)
               for attempt in range(12):
-                  torch.manual_seed(2000 + attempt + (100 if only else 0))
+                  torch.manual_seed(3000 + attempt)
                   y = tts.generate(text, language_id="ko", audio_prompt_path="ref.wav", exaggeration=ex, cfg_weight=0.4).squeeze(0).numpy()
                   segs = pieces(y, tts.sr, len(nums))
-                  # The pieces we need must also have a plausible length for their word.
-                  if segs and attempt < 11 and not all(good(n, (b - a) / tts.sr) for n, (a, b) in zip(nums, segs) if n in targets):
-                      segs = None
-                  if segs:
-                      pad = int(0.03 * tts.sr)
-                      for n, (a, b) in zip(nums, segs):
-                          if n not in targets:
-                              continue
-                          sf.write(f"out/count-{n:03d}.wav", y[max(0, a - pad): b + pad], tts.sr)
-                          report.append(f"{n}\t{ko(n)}\tdur={(b - a) / tts.sr:.2f}\ttries={attempt + 1}")
-                      done = True
+                  if not segs:
+                      continue
+                  verified = {}
+                  for n, (a, b) in zip(nums, segs):
+                      if n not in targets or not good(n, (b - a) / tts.sr):
+                          continue
+                      clip = y[max(0, a - pad): b + pad]
+                      y16 = librosa.resample(clip, orig_sr=tts.sr, target_sr=16000)
+                      y16 = np.concatenate([np.zeros(4000, np.float32), y16.astype(np.float32), np.zeros(4000, np.float32)])
+                      out, _ = asr.transcribe(y16, language="ko", beam_size=5, vad_filter=False, initial_prompt="하나 둘 셋 넷 다섯")
+                      heard = norm("".join(x.text for x in out))
+                      if heard in (norm(ko(n)), str(n)):
+                          verified[n] = clip
+                  if best is None or len(verified) > len(best):
+                      best = verified
+                  if len(best) == len(targets):
                       break
-              print(nums[0], "-", nums[-1], "ok" if done else "FAILED", flush=True)
-              if not done:
-                  report.append(f"{nums[0]}-{nums[-1]}\tFAILED")
+              for n, clip in (best or {}).items():
+                  sf.write(f"out/count-{n:03d}.wav", clip, tts.sr)
+                  report.append(f"{n}\t{ko(n)}\tverified")
+              missing = [n for n in targets if n not in (best or {})]
+              for n in missing:
+                  report.append(f"{n}\t{ko(n)}\tFAILED")
+              print(nums[0], "-", nums[-1], "verified", len(best or {}), "/", len(targets), flush=True)
           open(f"out/report-{part}.tsv", "w").write("\n".join(report) + "\n")
           PY
       - name: Trim and encode
