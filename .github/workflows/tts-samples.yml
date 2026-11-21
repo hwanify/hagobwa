@@ -121,4 +121,5 @@ jobs:
           git add voice-samples
           git diff --cached --quiet && exit 0
           git commit -m "Voice samples from open-source TTS [skip ci]"
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
