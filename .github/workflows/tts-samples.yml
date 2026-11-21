@@ -1,0 +1,116 @@
+# Generates Korean counting voice samples with open-source TTS models (no paid API),
+# then commits them to voice-samples/ so they can be listened to and compared.
+#   - MeloTTS (MIT) Korean model
+#   - CosyVoice-300M-SFT (Apache-2.0) with its built-in Korean female speaker
+name: 음성 샘플 만들기 (오픈소스 TTS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: '읽을 문장'
+        default: '하나. 둘. 셋. 넷. 다섯.'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tts-samples.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  melo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install MeloTTS
+        run: |
+          pip install --quiet git+https://github.com/myshell-ai/MeloTTS.git
+          python -m unidic download
+      - name: Generate
+        env:
+          TEXT: ${{ inputs.text || '하나. 둘. 셋. 넷. 다섯.' }}
+        run: |
+          mkdir -p out
+          python - <<'PY'
+          import os
+          from melo.api import TTS
+          text = os.environ["TEXT"]
+          model = TTS(language="KR", device="cpu")
+          spk = model.hps.data.spk2id
+          print("speakers:", dict(spk))
+          for speed in (1.0, 1.2):
+              model.tts_to_file(text, spk["KR"], f"out/melo-kr-speed{speed}.wav", speed=speed)
+          PY
+          for f in out/*.wav; do ffmpeg -loglevel error -y -i "$f" -b:a 96k "${f%.wav}.mp3"; done
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: melo
+          path: out/*.mp3
+
+  cosyvoice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install CosyVoice
+        run: |
+          git clone --recursive --depth 1 https://github.com/FunAudioLLM/CosyVoice.git
+          cd CosyVoice
+          pip install --quiet torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+          grep -v -E '^(torch|torchaudio|onnxruntime-gpu|tensorrt|deepspeed|fastapi|gradio|openai-whisper)' requirements.txt > req.txt || true
+          pip install --quiet -r req.txt || pip install --quiet -r req.txt --no-deps
+          pip install --quiet onnxruntime modelscope huggingface_hub
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+          snapshot_download("FunAudioLLM/CosyVoice-300M-SFT", local_dir="pretrained_models/CosyVoice-300M-SFT")
+          PY
+      - name: Generate
+        env:
+          TEXT: ${{ inputs.text || '하나. 둘. 셋. 넷. 다섯.' }}
+        run: |
+          cd CosyVoice
+          mkdir -p ../out
+          PYTHONPATH=third_party/Matcha-TTS:. python - <<'PY'
+          import os, torchaudio
+          from cosyvoice.cli.cosyvoice import CosyVoice
+          cv = CosyVoice("pretrained_models/CosyVoice-300M-SFT", load_jit=False, fp16=False)
+          print("speakers:", cv.list_available_spks())
+          text = os.environ["TEXT"]
+          spk = next((s for s in cv.list_available_spks() if "韩" in s), cv.list_available_spks()[0])
+          for i, out in enumerate(cv.inference_sft(text, spk, stream=False)):
+              torchaudio.save(f"../out/cosyvoice-kr-{i}.wav", out["tts_speech"], cv.sample_rate)
+          PY
+          cd ..
+          for f in out/*.wav; do ffmpeg -loglevel error -y -i "$f" -b:a 96k "${f%.wav}.mp3"; done
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cosyvoice
+          path: out/*.mp3
+
+  commit:
+    needs: [melo, cosyvoice]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: voice-samples
+          merge-multiple: true
+      - name: Commit samples
+        run: |
+          ls -la voice-samples || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add voice-samples
+          git diff --cached --quiet && exit 0
+          git commit -m "Voice samples from open-source TTS [skip ci]"
+          git push
