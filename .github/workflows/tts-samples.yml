@@ -72,7 +72,7 @@ jobs:
           pip install --quiet torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
           grep -v -E '^(torch|torchaudio|onnxruntime-gpu|tensorrt|deepspeed|fastapi|gradio)' requirements.txt > req.txt || true
           # openai-whisper's old setup.py needs pkg_resources (setuptools < 70) at build time.
-          pip install --quiet "setuptools<70" wheel
+          pip install --quiet "setuptools<70" wheel "numpy<2" cython
           pip install --quiet --no-build-isolation -r req.txt
           pip install --quiet onnxruntime modelscope huggingface_hub
           python - <<'PY'
