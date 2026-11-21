@@ -144,28 +144,12 @@ async function ensureShield(reps10: number, token: string) {
   if (shieldKey === key) return;
   shieldKey = key;
   const hasIcon = await prepareShieldIcon();
-  // When the 5 emergency minutes are used up, lock again.
-  ScreenTime.configureActions({
-    activityName: EMERGENCY_ACTIVITY,
-    callbackName: 'eventDidReachThreshold',
-    eventName: 'used',
-    actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID }],
-  });
   const emergency = {
     behavior: 'defer' as const,
     hagobwaEmergency: true,
-    actions: [
-      { type: 'unblockSelection' as const, familyActivitySelectionId: SELECTION_ID },
-      {
-        type: 'startMonitoring' as const,
-        activityName: EMERGENCY_ACTIVITY,
-        intervalStartDelayMs: 0,
-        intervalEndDelayMs: 23 * 3600_000,
-        deviceActivityEvents: [
-          { eventName: 'used', familyActivitySelection: token, threshold: { minute: EMERGENCY_MIN }, includesPastActivity: false },
-        ],
-      },
-    ],
+    // Re-locking after 5 minutes of use comes from the guard monitor started while locked
+    // (see apply), which uses the same reliable window as normal charging.
+    actions: [{ type: 'unblockSelection' as const, familyActivitySelectionId: SELECTION_ID }],
   };
   ScreenTime.updateShield(
     {
@@ -181,12 +165,54 @@ async function ensureShield(reps10: number, token: string) {
       primaryButtonLabel: '확인',
       primaryButtonLabelColor: WHITE,
       primaryButtonBackgroundColor: INK,
-      secondaryButtonLabel: `비상 ${EMERGENCY_MIN}분 열기 (하루 1번)`,
+      // Short enough for one line; hidden by our ShieldConfiguration patch once used today.
+      secondaryButtonLabel: `비상 ${EMERGENCY_MIN}분 열기`,
       secondaryButtonLabelColor: MUTE,
-    },
+      hagobwaEmergencyButton: true,
+    } as unknown as ScreenTime.ShieldConfiguration,
     // `hagobwaEmergency` is read by our ShieldAction patch; the library's type doesn't know it.
     { primary: { behavior: 'close' }, secondary: emergency as unknown as ScreenTime.ShieldAction },
   );
+}
+
+/**
+ * While locked, keep a usage monitor running whose checkpoints re-lock the apps every 5 minutes
+ * of use. Locked apps aren't used, so it only matters after an emergency unlock from the lock
+ * screen: then it locks again within 5 minutes of use. Names start with 'e' so they are never
+ * charged as balance usage (those start with 'm').
+ */
+async function startGuard(token: string): Promise<number> {
+  const now = Date.now();
+  const marks: number[] = [];
+  for (let m = EMERGENCY_MIN; m <= 120; m += EMERGENCY_MIN) marks.push(m);
+  for (let m = 150; m <= 24 * 60; m += 30) marks.push(m);
+  for (const m of marks) {
+    ScreenTime.configureActions({
+      activityName: ACTIVITY,
+      callbackName: 'eventDidReachThreshold',
+      eventName: `e${m}`,
+      actions: [{ type: 'blockSelection', familyActivitySelectionId: SELECTION_ID }],
+    });
+  }
+  const end = now + WINDOW_MS;
+  try {
+    await ScreenTime.startMonitoring(
+      ACTIVITY,
+      { intervalStart: dateParts(new Date(now)), intervalEnd: dateParts(new Date(end)), repeats: false },
+      marks.map((m) => ({
+        eventName: `e${m}`,
+        familyActivitySelection: token,
+        threshold: { hour: Math.floor(m / 60), minute: m % 60 },
+        includesPastActivity: false,
+      })),
+    );
+  } catch {
+    return 0;
+  }
+  monitorUntil = end;
+  monitorMode = 'week';
+  rememberMode('week', end);
+  return end;
 }
 
 /** Day key of the last emergency unlock (lock screen or app), shared with the extension. */
@@ -267,7 +293,7 @@ const screenTime: AppBlocker = {
     const marks = usageCheckpoints(balanceSec);
     if (marks.length === 0) {
       ScreenTime.blockSelection(selection(), 'hagobwa:empty');
-      return 0;
+      return startGuard(token);
     }
 
     const now = Date.now();

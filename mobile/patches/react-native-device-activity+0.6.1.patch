@@ -20,3 +20,24 @@ index da5121e..7c04d2d 100644
    if let actions = configForSelectedAction["actions"] as? [[String: Any]] {
      for action in actions {
        executeGenericAction(
+diff --git a/node_modules/react-native-device-activity/targets/ShieldConfiguration/ShieldConfigurationExtension.swift b/node_modules/react-native-device-activity/targets/ShieldConfiguration/ShieldConfigurationExtension.swift
+index 63fca8e..8d9629f 100644
+--- a/node_modules/react-native-device-activity/targets/ShieldConfiguration/ShieldConfigurationExtension.swift
++++ b/node_modules/react-native-device-activity/targets/ShieldConfiguration/ShieldConfigurationExtension.swift
+@@ -93,7 +93,15 @@ func buildShield(placeholders: [String: String?], config: [String: Any]?)
+     let primaryButtonBackgroundColor = getColor(
+       color: config["primaryButtonBackgroundColor"] as? [String: Double])
+ 
+-    let secondaryButtonLabel = config["secondaryButtonLabel"] as? String
++    var secondaryButtonLabel = config["secondaryButtonLabel"] as? String
++    // 하고봐: hide the emergency button once it was used today (lock screen or app).
++    if config["hagobwaEmergencyButton"] as? Bool == true {
++      let formatter = DateFormatter()
++      formatter.dateFormat = "yyyy-MM-dd"
++      if userDefaults?.string(forKey: "hagobwaEmergencyDay") == formatter.string(from: Date()) {
++        secondaryButtonLabel = nil
++      }
++    }
+     let secondaryButtonLabelColor = getColor(
+       color: config["secondaryButtonLabelColor"] as? [String: Double]
+     )
