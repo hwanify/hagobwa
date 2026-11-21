@@ -147,7 +147,7 @@ jobs:
                       clip = y[max(0, a - pad): b + pad]
                       y16 = librosa.resample(clip, orig_sr=tts.sr, target_sr=16000)
                       y16 = np.concatenate([np.zeros(4000, np.float32), y16.astype(np.float32), np.zeros(4000, np.float32)])
-                      out, _ = asr.transcribe(y16, language="ko", beam_size=5, vad_filter=False, initial_prompt="하나 둘 셋 넷 다섯")
+                      out, _ = asr.transcribe(y16, language="ko", beam_size=5, vad_filter=False)
                       heard = norm("".join(x.text for x in out))
                       if heard in (norm(ko(n)), str(n)):
                           verified[n] = clip
