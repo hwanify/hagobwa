@@ -40,7 +40,7 @@ export default function Workout() {
     setCount(n);
     setPulse((p) => p + 1);
     tapFeedback();
-    if (live.current.sound) say(repLine(live.current.voice, n, 0));
+    if (live.current.sound) say(repLine(live.current.voice, n, 0), live.current.voice);
   }, []);
 
   const finish = useCallback(() => {

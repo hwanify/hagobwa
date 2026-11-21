@@ -57,6 +57,7 @@ export default function Settings() {
       </View>
 
       <H2 style={styles.section}>구령 목소리</H2>
+      <Muted>아이폰 설정 → 손쉬운 사용 → 읽기 및 말하기 → 음성 → 한국어에서 고음질 목소리를 받으면 더 자연스러워요.</Muted>
       <Row style={styles.chips}>
         {VOICE_MODES.map((v) => (
           <Chip
@@ -65,7 +66,7 @@ export default function Settings() {
             active={s.voice === v.id}
             onPress={() => {
               s.updateSettings({ voice: v.id });
-              say(SAMPLE_LINE[v.id]);
+              say(SAMPLE_LINE[v.id], v.id);
             }}
           />
         ))}
