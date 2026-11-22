@@ -30,8 +30,8 @@
 앱은 누구나 사용할 수 있으며, 연령과 관계없이 개인정보를 수집하지 않습니다.
 
 ## 7. 문의
-문의는 아래 페이지에 남겨 주세요.
-https://github.com/hwanify/pushupapp/issues
+문의는 아래 이메일로 보내 주세요.
+hwanify@gmail.com
 
 ## 8. 변경
 이 방침이 바뀌면 이 페이지에 시행일과 함께 알립니다.
@@ -49,7 +49,7 @@ Hagobwa does not collect personal data.
 - **On-device data**: workouts, balance and settings stay on your device. Delete them in Settings → Reset data, or by deleting the app.
 - **Third-party servers**: the app downloads updates from Expo (EAS Update) and the pose-detection model from Google / jsDelivr; these services may log standard connection data such as IP addresses.
 - **No ads, analytics or tracking.**
-- **Contact**: https://github.com/hwanify/pushupapp/issues
+- **Contact**: hwanify@gmail.com
 
 ---
 구령 음성: 타입캐스트(Typecast) AI 음성으로 만들었습니다.

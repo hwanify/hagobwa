@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Chip, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { DIFFICULTIES, rateLabel } from '@/core/rates';
@@ -14,7 +14,14 @@ import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
 const PRIVACY_URL = 'https://github.com/hwanify/pushupapp/blob/main/docs/PRIVACY.md';
-const SUPPORT_URL = 'https://github.com/hwanify/pushupapp/issues';
+const SUPPORT_EMAIL = 'hwanify@gmail.com';
+
+/** Opens the mail app with the address, a subject and the app version filled in. */
+function mailSupport() {
+  const subject = encodeURIComponent('[하고봐] 문의');
+  const body = encodeURIComponent(`\n\n---\n${versionText()}`);
+  Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`).catch(() => {});
+}
 
 function versionText(): string {
   const v = Constants.expoConfig?.version ?? '';
@@ -121,7 +128,7 @@ export default function Settings() {
           <Muted style={styles.link}>개인정보처리방침</Muted>
         </Pressable>
         <Muted style={{ fontSize: 12 }}>·</Muted>
-        <Pressable accessibilityRole="link" onPress={() => open(SUPPORT_URL)} hitSlop={8}>
+        <Pressable accessibilityRole="link" onPress={mailSupport} hitSlop={8}>
           <Muted style={styles.link}>문의하기</Muted>
         </Pressable>
       </Row>
