@@ -11,33 +11,15 @@ export const colors = {
   dim: '#E2E3DC',
 } as const;
 
-/**
- * One typeface everywhere (app, website, store images): Pretendard (SIL OFL, bundled in
- * assets/fonts). On iOS/Android each weight is its own font file, picked in <T> from
- * fontWeight; the web build loads the same family from a CDN.
- */
-export const PRETENDARD: Record<string, string> = {
-  '400': 'Pretendard-Regular',
-  '500': 'Pretendard-Medium',
-  '600': 'Pretendard-SemiBold',
-  '700': 'Pretendard-Bold',
-  '800': 'Pretendard-ExtraBold',
-  '900': 'Pretendard-Black',
-};
-
-export const FONT_FILES = {
-  'Pretendard-Regular': require('../assets/fonts/Pretendard-Regular.otf'),
-  'Pretendard-Medium': require('../assets/fonts/Pretendard-Medium.otf'),
-  'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
-  'Pretendard-Bold': require('../assets/fonts/Pretendard-Bold.otf'),
-  'Pretendard-ExtraBold': require('../assets/fonts/Pretendard-ExtraBold.otf'),
-  'Pretendard-Black': require('../assets/fonts/Pretendard-Black.otf'),
-};
-
 export const font = {
   family: Platform.select({
     web: '"Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
     default: undefined,
+  }),
+  mono: Platform.select({
+    web: '"JetBrains Mono", ui-monospace, monospace',
+    ios: 'Menlo',
+    default: 'monospace',
   }),
 };
 

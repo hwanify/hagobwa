@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
 import { appById } from '@/core/apps';
-import { colors, font, MAX_WIDTH, PRETENDARD, radius } from '@/theme';
+import { colors, font, MAX_WIDTH, radius } from '@/theme';
 
 /* ---------- layout ---------- */
 
@@ -53,17 +52,8 @@ export function Screen({
 
 type TProps = TextProps & { style?: StyleProp<TextStyle>; children: ReactNode };
 
-/** Native: Pretendard ships one file per weight, so turn fontWeight into the matching family. */
-function withFont(style: StyleProp<TextStyle>): StyleProp<TextStyle> {
-  if (Platform.OS === 'web') return [styles.text, style];
-  const flat: TextStyle = StyleSheet.flatten([styles.text, style]) ?? {};
-  const w = String(flat.fontWeight ?? '400');
-  const family = PRETENDARD[w === 'bold' ? '700' : w === 'normal' ? '400' : w] ?? PRETENDARD['400'];
-  return { ...flat, fontFamily: family, fontWeight: undefined };
-}
-
 export function T({ style, ...rest }: TProps) {
-  return <Text {...rest} style={withFont(style)} />;
+  return <Text {...rest} style={[styles.text, style]} />;
 }
 export function H1(p: TProps) {
   return <T {...p} style={[styles.h1, p.style]} />;
@@ -259,8 +249,7 @@ const styles = StyleSheet.create({
   h1: { fontSize: 28, fontWeight: '800', letterSpacing: -0.8, lineHeight: 36 },
   h2: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
   muted: { color: colors.mute, fontSize: 14, lineHeight: 21 },
-  // Numbers: same typeface, fixed-width digits so counters don't jitter.
-  mono: { fontWeight: '700', fontVariant: ['tabular-nums'] },
+  mono: { fontFamily: font.mono, fontWeight: '700' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

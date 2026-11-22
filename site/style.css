@@ -1,9 +1,9 @@
 :root {
   --paper: #F7F7F3;
   --ground: #ECEDE7;
-  --ink: #16181B;
-  --mute: #5C5F66;
-  --line: #D5D6CF;
+  --ink: #1C1C1A;
+  --mute: #70706A;
+  --line: #DDDDD6;
   --red: #E0454A;
 }
 * { box-sizing: border-box; }

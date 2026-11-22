@@ -1,4 +1,3 @@
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -7,17 +6,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useApplyOtaUpdate } from '@/platform/updates';
 import { useBlockerSync, useHydrated } from '@/store/app-store';
-import { colors, FONT_FILES } from '@/theme';
+import { colors } from '@/theme';
 
 const WEB_FONTS = [
   'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css',
+  'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap',
 ];
 
 export default function RootLayout() {
   const hydrated = useHydrated();
-  // Web gets Pretendard from the CDN stylesheet below; native loads the bundled files.
-  const [fontsLoaded, fontError] = useFonts(Platform.OS === 'web' ? {} : FONT_FILES);
-  const fontsReady = fontsLoaded || !!fontError;
   useApplyOtaUpdate();
   useBlockerSync(hydrated);
 
@@ -34,7 +31,7 @@ export default function RootLayout() {
     document.title = '하고봐';
   }, []);
 
-  if (!hydrated || !fontsReady) {
+  if (!hydrated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper }}>
         <ActivityIndicator color={colors.red} />
