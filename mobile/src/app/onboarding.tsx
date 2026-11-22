@@ -68,7 +68,7 @@ export default function Onboarding() {
       ) : picker.closedOnce ? (
         <View style={{ gap: 6 }}>
           <Button label="다시 고르기" onPress={pickApps} />
-          <Button variant="ghost" label="일단 넘어가기 (설정에서 다시 고를 수 있어요)" onPress={finishNative} />
+          <Button variant="ghost" label="일단 넘어가기 (잠금 탭에서 다시 고를 수 있어요)" onPress={finishNative} />
         </View>
       ) : (
         <Button label="허용하고 잠글 앱 고르기" onPress={pickApps} />

@@ -18,7 +18,6 @@ import {
   tick,
   type BankState,
 } from '@/core/timebank';
-import type { VoiceMode } from '@/core/voice';
 import { blocker, emergencyDayUsed, markEmergencyDay } from '@/platform/blocker';
 import { dayKey } from '@/core/dates';
 
@@ -27,7 +26,6 @@ export interface Settings {
   goalHours: number;
   lockedApps: AppId[];
   difficulty: Difficulty;
-  voice: VoiceMode;
   sound: boolean;
 }
 
@@ -71,7 +69,6 @@ const defaults: Settings & { bank: BankState } & BlockerSync = {
   goalHours: 2,
   lockedApps: ['youtube', 'instagram'],
   difficulty: 'normal',
-  voice: 'drill',
   sound: true,
   bank: emptyBank(),
 };
@@ -86,7 +83,22 @@ export const useAppStore = create<AppState>()(
         void get().syncBlocker();
       },
 
-      updateSettings: (patch) => set(patch),
+      updateSettings: (patch) => {
+        const before = get();
+        set(patch);
+        const goalChanged = patch.goalHours !== undefined && patch.goalHours !== before.goalHours;
+        const rateChanged = patch.difficulty !== undefined && patch.difficulty !== before.difficulty;
+        if (!goalChanged && !rateChanged) return;
+        if (blocker.kind === 'simulated') {
+          // A lower maximum also trims what's already saved.
+          const cap = capFor(get().goalHours);
+          if (get().bank.balanceSec > cap) set({ bank: { ...get().bank, balanceSec: cap } });
+          return;
+        }
+        // Re-lock with the new numbers: the lock screen shows "푸시업 N개면 10분" for this
+        // difficulty, and the balance is trimmed to the new maximum after charging usage.
+        void get().syncBlocker();
+      },
 
       logWorkout: (exercise, reps) => {
         const s = get();
@@ -150,40 +162,19 @@ export const useAppStore = create<AppState>()(
         void get().syncBlocker();
       },
 
-      syncBlocker: async ({ restart = true } = {}) => {
-        if (blocker.kind === 'simulated') return;
-        const now = Date.now();
-        // An emergency unlock used from the lock screen counts for today in the app too.
-        const today = dayKey(now);
-        if (emergencyDayUsed() === today && get().bank.emergency.day !== today) {
-          set({ bank: { ...get().bank, emergency: { day: today, used: EMERGENCY_PER_DAY } } });
-        }
-        const s = get();
-        // Usage is cumulative since the monitor started, so short sessions add up (30s + 30s = 1 min).
-        const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
-        const bank = chargeScreenTime(s.bank, Math.max(0, used - s.blockerCharged), now);
-        // Restarting the monitor drops the partial minute in progress, so only restart when the
-        // balance changed (charge, emergency, picker) or the usage window is about to end.
-        const until = s.blockerUntil ?? -1;
-        const stale = until < 0 || (until > 0 && now > until - 15 * 60_000);
-        if (!restart && !stale) {
-          set({ bank, blockerCharged: Math.max(s.blockerCharged, used) });
-          return;
-        }
-        set({ bank, blockerSince: now, blockerCharged: 0 });
-        try {
-          const ends = await blocker.apply(get().onboarded ? bank.balanceSec : 0, repsNeeded(600, 'pushup', get().difficulty));
-          set({ blockerUntil: ends });
-        } catch {
-          // Screen Time refused (e.g. permission revoked): keep the in-app balance as is.
-        }
+      // One sync at a time: a charge, the app coming back and a picker change can all ask at
+      // once, and two overlapping restarts of the Screen Time monitor could leave it half set up.
+      syncBlocker: (opts) => {
+        const run = syncQueue.then(() => syncOnce(opts));
+        syncQueue = run.catch(() => {});
+        return run;
       },
     }),
     {
       name: 'hagobwa-v1',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ onboarded, goalHours, lockedApps, difficulty, voice, sound, bank, blockerSince, blockerCharged, blockerUntil }) => ({
+      partialize: ({ onboarded, goalHours, lockedApps, difficulty, sound, bank, blockerSince, blockerCharged, blockerUntil }) => ({
         blockerSince,
         blockerCharged,
         blockerUntil,
@@ -191,13 +182,49 @@ export const useAppStore = create<AppState>()(
         goalHours,
         lockedApps,
         difficulty,
-        voice,
         sound,
         bank,
       }),
     },
   ),
 );
+
+let syncQueue: Promise<void> = Promise.resolve();
+
+/** See AppState.syncBlocker. Runs only through the queue above. */
+async function syncOnce({ restart = true }: { restart?: boolean } = {}): Promise<void> {
+  if (blocker.kind === 'simulated') return;
+  const { getState: get, setState: set } = useAppStore;
+  const now = Date.now();
+  // An emergency unlock used from the lock screen counts for today in the app too.
+  const today = dayKey(now);
+  if (emergencyDayUsed() === today && get().bank.emergency.day !== today) {
+    set({ bank: { ...get().bank, emergency: { day: today, used: EMERGENCY_PER_DAY } } });
+  }
+  const s = get();
+  // Usage is cumulative since the monitor started, so short sessions add up (30s + 30s = 1 min).
+  const used = s.blockerSince > 0 ? blocker.usedSecondsSince(s.blockerSince) : 0;
+  const charged = chargeScreenTime(s.bank, Math.max(0, used - s.blockerCharged), now);
+  // The maximum can have been lowered in settings: trim what's saved to it.
+  const cap = capFor(s.goalHours);
+  const trimmed = charged.balanceSec > cap;
+  const bank = trimmed ? { ...charged, balanceSec: cap } : charged;
+  // Restarting the monitor drops the partial minute in progress, so only restart when the
+  // balance changed (charge, emergency, picker) or the usage window is about to end.
+  const until = s.blockerUntil ?? -1;
+  const stale = until < 0 || (until > 0 && now > until - 15 * 60_000);
+  if (!restart && !stale && !trimmed) {
+    set({ bank, blockerCharged: Math.max(s.blockerCharged, used) });
+    return;
+  }
+  set({ bank, blockerSince: now, blockerCharged: 0 });
+  try {
+    const ends = await blocker.apply(get().onboarded ? bank.balanceSec : 0, repsNeeded(600, 'pushup', get().difficulty));
+    set({ blockerUntil: ends });
+  } catch {
+    // Screen Time refused (e.g. permission revoked): keep the in-app balance as is.
+  }
+}
 
 /** Keep OS blocking in step with the balance: on launch and whenever the app comes back. */
 export function useBlockerSync(enabled: boolean): void {

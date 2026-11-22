@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -9,6 +10,8 @@ import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
 import PoseCamera from '@/features/pose/PoseCamera';
 import { closeScreen, goHome } from '@/navigation';
 import { preloadCounts, releaseCounts, sayCount, tapFeedback } from '@/platform/feedback';
+import { ask } from '@/platform/ask';
+import { useHoldUpdates } from '@/platform/updates';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
@@ -25,6 +28,11 @@ export default function Workout() {
   const [exercise, setExercise] = useState<ExerciseId>('pushup');
   const [count, setCount] = useState(0);
   const [pulse, setPulse] = useState(0);
+
+  // The phone sits on the floor untouched during a set: don't let the screen lock,
+  // and don't let an app update restart in the middle of counting.
+  useKeepAwake();
+  useHoldUpdates();
 
   const countRef = useRef(0);
   const live = useRef({ sound });
@@ -62,12 +70,42 @@ export default function Workout() {
     setCount(0);
   };
 
-  const close = () => {
+  const leave = () => {
     if (first) goHome();
     else closeScreen();
   };
 
   const gainPreview = earnedSeconds(exercise, count, difficulty);
+
+  // Counted reps are only kept by charging: ask before throwing them away.
+  const close = () => {
+    if (count === 0) return leave();
+    if (gainPreview > 0) {
+      ask(`${count}회 했어요`, `충전하면 +${formatDuration(gainPreview)}이 쌓여요.`, [
+        { text: '계속하기', style: 'cancel' },
+        { text: '그냥 나가기', style: 'destructive', onPress: leave },
+        { text: '충전하고 나가기', onPress: finish },
+      ]);
+    } else {
+      ask('나갈까요?', `지금까지 한 ${count}회는 저장되지 않아요.`, [
+        { text: '계속하기', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: leave },
+      ]);
+    }
+  };
+
+  const switchExercise = (e: ExerciseId) => {
+    if (e === exercise) return;
+    const go = () => {
+      setExercise(e);
+      reset();
+    };
+    if (count === 0) return go();
+    ask('종목을 바꿀까요?', `지금까지 한 ${count}회는 사라져요.${gainPreview > 0 ? ' 먼저 충전하기를 누르면 저장돼요.' : ''}`, [
+      { text: '취소', style: 'cancel' },
+      { text: '바꾸기', style: 'destructive', onPress: go },
+    ]);
+  };
 
   return (
     <Screen
@@ -97,10 +135,7 @@ export default function Workout() {
         <Segmented
           options={EXERCISES}
           value={exercise}
-          onChange={(e) => {
-            setExercise(e);
-            reset();
-          }}
+          onChange={switchExercise}
         />
         <Pressable
           accessibilityRole="button"

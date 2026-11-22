@@ -1,4 +1,7 @@
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as Updates from 'expo-updates';
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -9,6 +12,19 @@ import { clearPicked } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
+
+const PRIVACY_URL = 'https://github.com/hwanify/pushupapp/blob/main/docs/PRIVACY.md';
+const SUPPORT_URL = 'https://github.com/hwanify/pushupapp/issues';
+
+function versionText(): string {
+  const v = Constants.expoConfig?.version ?? '';
+  const ota = Updates.updateId ? ` (${Updates.updateId.slice(0, 6)})` : '';
+  return `하고봐 ${v}${ota}`;
+}
+
+function open(url: string) {
+  WebBrowser.openBrowserAsync(url).catch(() => {});
+}
 
 /** Test builds: how the current usage window is doing (start, end, minutes iOS reported). */
 function usageDiag(since: number, until: number, charged: number): string {
@@ -99,6 +115,17 @@ export default function Settings() {
           <Button variant="ghost" label="데이터 초기화" onPress={() => setConfirmReset(true)} />
         )}
       </View>
+
+      <Row style={styles.links}>
+        <Pressable accessibilityRole="link" onPress={() => open(PRIVACY_URL)} hitSlop={8}>
+          <Muted style={styles.link}>개인정보처리방침</Muted>
+        </Pressable>
+        <Muted style={{ fontSize: 12 }}>·</Muted>
+        <Pressable accessibilityRole="link" onPress={() => open(SUPPORT_URL)} hitSlop={8}>
+          <Muted style={styles.link}>문의하기</Muted>
+        </Pressable>
+      </Row>
+      <Muted style={styles.version}>{versionText()}</Muted>
     </Screen>
   );
 }
@@ -107,4 +134,7 @@ const styles = StyleSheet.create({
   section: { marginTop: 28, marginBottom: 4 },
   chips: { gap: 6, marginTop: 10, flexWrap: 'wrap' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, marginTop: 6 },
+  links: { justifyContent: 'center', gap: 8, marginTop: 32 },
+  link: { fontSize: 12, textDecorationLine: 'underline' },
+  version: { fontSize: 11, textAlign: 'center', marginTop: 8, marginBottom: 8 },
 });
