@@ -106,8 +106,8 @@ const simulated: AppBlocker = {
 // 하고봐 palette (src/theme): paper background, ink text, red accent.
 const RED = { red: 224, green: 69, blue: 74 };
 const PAPER = { red: 247, green: 247, blue: 243 };
-const INK = { red: 28, green: 28, blue: 26 };
-const MUTE = { red: 112, green: 112, blue: 106 };
+const INK = { red: 22, green: 24, blue: 27 };
+const MUTE = { red: 92, green: 95, blue: 102 };
 const WHITE = { red: 255, green: 255, blue: 255 };
 const ICON_FILE = 'hagobwa-shield-zero.png';
 

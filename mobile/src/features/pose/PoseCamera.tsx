@@ -4,7 +4,7 @@ import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-nati
 
 import { T } from '@/components/ui';
 import { HINT_TEXT, RepCounter, type Landmark } from '@/core/repCounter';
-import { colors, font } from '@/theme';
+import { colors } from '@/theme';
 
 import { POSE_HTML } from './pose-html';
 import type { CameraStatus, PoseCameraProps } from './types';
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(22,24,27,0.75)',
   },
   barText: { color: colors.paper, fontSize: 12, fontWeight: '600', flex: 1 },
-  angle: { color: 'rgba(247,247,243,0.7)', fontSize: 11, fontFamily: font.mono },
+  angle: { color: 'rgba(247,247,243,0.7)', fontSize: 11, fontVariant: ['tabular-nums'] },
   offBtn: { backgroundColor: 'rgba(247,247,243,0.15)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   offText: { color: colors.paper, fontSize: 11, fontWeight: '700' },
 });
