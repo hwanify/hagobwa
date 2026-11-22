@@ -94,22 +94,42 @@ function playerFor(n: number): AudioPlayer | null {
   return p;
 }
 
+function prepareAudio(): void {
+  if (audioReady) return;
+  audioReady = true;
+  setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+}
+
+/**
+ * Get the first counts ready when the workout screen opens, so "하나" plays the moment the
+ * first rep lands instead of waiting for the audio session and the file to load.
+ */
+export function preloadCounts(): void {
+  try {
+    prepareAudio();
+    playerFor(1);
+    playerFor(2);
+    playerFor(3);
+  } catch {
+    // Counting out loud is a bonus.
+  }
+}
+
 /**
  * Say a rep count in the recorded voice; numbers beyond the recordings use the system voice.
  * Plays over music (ducking it) and in silent mode, since the user asked for counting.
  */
 export function sayCount(n: number): void {
   try {
-    if (!audioReady) {
-      audioReady = true;
-      setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
-    }
+    prepareAudio();
     const p = playerFor(n);
     if (!p) {
       say(koCount(n), 'drill');
       return;
     }
-    void p.seekTo(0).then(() => p.play());
+    // A fresh player is already at the start: play right away instead of waiting on a seek.
+    if (p.currentTime > 0.01) void p.seekTo(0).then(() => p.play());
+    else p.play();
     // Warm up the next couple so they start instantly.
     playerFor(n + 1);
     playerFor(n + 2);

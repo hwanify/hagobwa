@@ -8,7 +8,7 @@ import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
 import PoseCamera from '@/features/pose/PoseCamera';
 import { closeScreen, goHome } from '@/navigation';
-import { releaseCounts, sayCount, tapFeedback } from '@/platform/feedback';
+import { preloadCounts, releaseCounts, sayCount, tapFeedback } from '@/platform/feedback';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
@@ -29,7 +29,10 @@ export default function Workout() {
   const countRef = useRef(0);
   const live = useRef({ sound });
   live.current = { sound };
-  useEffect(() => releaseCounts, []);
+  useEffect(() => {
+    preloadCounts();
+    return releaseCounts;
+  }, []);
   const finishedRef = useRef(false);
 
   const addRep = useCallback(() => {
