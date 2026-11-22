@@ -1,6 +1,6 @@
 # Publishes site/ (landing page + privacy policy) to GitHub Pages:
-#   https://hwanify.github.io/pushupapp/          landing
-#   https://hwanify.github.io/pushupapp/privacy/  privacy policy
+#   https://hwanify.github.io/hagobwa/          landing
+#   https://hwanify.github.io/hagobwa/privacy/  privacy policy
 # One-time setup: repo Settings > Pages > Source: "GitHub Actions".
 name: 웹사이트 배포 (GitHub Pages)
 

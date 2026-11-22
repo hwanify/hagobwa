@@ -11,8 +11,8 @@ App Store Connect에 그대로 붙여 넣을 수 있게 정리했어요.
 | 가격 | 무료 |
 | 출시 국가 | 대한민국 |
 | 연령 등급 | 4+ (질문지 전부 "없음") |
-| 개인정보처리방침 URL | https://hwanify.github.io/pushupapp/privacy/ |
-| 지원 URL | https://hwanify.github.io/pushupapp/ |
+| 개인정보처리방침 URL | https://hwanify.github.io/hagobwa/privacy/ |
+| 지원 URL | https://hwanify.github.io/hagobwa/ |
 
 ## 프로모션 텍스트 (170자)
 유튜브, 인스타 보기 전에 푸시업 10개. 카메라가 횟수를 세고, 운동한 만큼만 앱이 열려요.

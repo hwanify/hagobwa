@@ -21,7 +21,7 @@ Mac, Xcode, 컴퓨터 설치 없이 폰 브라우저로 전부 할 수 있어요
 
 ## 2단계. GitHub에 넣기
 
-github.com/hwanify/pushupapp → Settings → Secrets and variables → Actions
+github.com/hwanify/hagobwa → Settings → Secrets and variables → Actions
 
 **Secrets** (New repository secret)
 

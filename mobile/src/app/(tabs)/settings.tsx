@@ -13,7 +13,7 @@ import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
 import { colors } from '@/theme';
 
-const PRIVACY_URL = 'https://hwanify.github.io/pushupapp/privacy/';
+const PRIVACY_URL = 'https://hwanify.github.io/hagobwa/privacy/';
 const SUPPORT_EMAIL = 'hwanify@gmail.com';
 
 /** Opens the mail app with the address, a subject and the app version filled in. */
