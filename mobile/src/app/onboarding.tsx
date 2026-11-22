@@ -95,8 +95,8 @@ export default function Onboarding() {
 
       {step === 0 && (
         <View style={{ marginTop: 32 }}>
-          <H1>하루에 얼마나{'\n'}볼까요?</H1>
-          <Muted style={{ marginTop: 8 }}>잠긴 앱을 이 시간 안에서만 쓰도록 도와드려요.</Muted>
+          <H1>한 번에 얼마나{'\n'}모아둘까요?</H1>
+          <Muted style={{ marginTop: 8 }}>운동으로 충전한 시간은 여기까지만 쌓여요. 다 쓰면 다시 운동해서 채우면 돼요.</Muted>
           <View style={{ marginTop: 28, gap: 10 }}>
             {GOALS.map((g) => {
               const active = goal === g.h;

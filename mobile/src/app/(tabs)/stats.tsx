@@ -7,7 +7,7 @@ import { Card, Divider, H1, Mono, Muted, Row, Screen, Segmented, T } from '@/com
 import { addDays, startOfDay, startOfWeek, WEEKDAY_LABELS } from '@/core/dates';
 import { formatDuration } from '@/core/format';
 import { EXERCISE_LABEL, EXERCISES } from '@/core/rates';
-import { dailyTotals, dayLogs, exerciseTotals, streakDays, type DayLog, type WorkoutRecord } from '@/core/timebank';
+import { dailyTotals, dayLogs, exerciseTotals, streakDays, usageBetween, type DayLog, type WorkoutRecord } from '@/core/timebank';
 import { openCharge } from '@/navigation';
 import { useAppStore, useNow } from '@/store/app-store';
 import { colors } from '@/theme';
@@ -143,6 +143,8 @@ export default function Stats() {
   const totals = exerciseTotals(bank, from, tomorrow);
   const streak = streakDays(bank, now);
   const empty = bank.workouts.length === 0;
+  const used = usageBetween(bank, from, tomorrow);
+  const earned = totals.pushup.earnedSec + totals.squat.earnedSec;
 
   let body: ReactNode = null;
 
@@ -214,6 +216,16 @@ export default function Stats() {
         </View>
       )}
 
+      {!empty && (
+        <Row style={styles.usage}>
+          <Muted style={{ fontSize: 13 }}>{PERIODS.find((p) => p.id === period)?.label} 잠긴 앱 사용</Muted>
+          <T style={{ fontSize: 15, fontWeight: '800' }}>
+            {formatDuration(used)}
+            <Muted style={{ fontSize: 13, fontWeight: '600' }}> / 충전 {formatDuration(earned)}</Muted>
+          </T>
+        </Row>
+      )}
+
       {empty ? <Muted style={{ paddingVertical: 24 }}>아직 운동 기록이 없어요. 운동하면 여기에 쌓여요.</Muted> : body}
     </Screen>
   );
@@ -221,6 +233,7 @@ export default function Stats() {
 
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
+  usage: { justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   record: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
   recordTime: { width: 48, fontSize: 14, color: colors.mute },

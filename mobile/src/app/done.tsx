@@ -97,7 +97,7 @@ export default function Done() {
         <T style={styles.ticketSmall}>
           {EXERCISE_LABEL[record.exercise]} {record.reps}회
         </T>
-        {capped && <T style={[styles.ticketSmall, { marginTop: 6 }]}>하루 최대치라 {formatDuration(added)}만 쌓였어요.</T>}
+        {capped && <T style={[styles.ticketSmall, { marginTop: 6 }]}>최대 충전량이 꽉 차서 {formatDuration(added)}만 쌓였어요.</T>}
         <Row style={styles.ticketFoot}>
           <T style={{ color: colors.white }}>{fresh ? '지금 잔고' : '현재 잔고'}</T>
           <Mono style={{ color: colors.white }}>{formatDuration(bank.balanceSec)}</Mono>

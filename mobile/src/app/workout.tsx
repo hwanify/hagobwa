@@ -8,6 +8,7 @@ import { Button, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui'
 import { formatDuration } from '@/core/format';
 import { earnedSeconds, EXERCISES, type ExerciseId } from '@/core/rates';
 import PoseCamera from '@/features/pose/PoseCamera';
+import type { CameraStatus } from '@/features/pose/types';
 import { closeScreen, goHome } from '@/navigation';
 import { preloadCounts, releaseCounts, sayCount, tapFeedback } from '@/platform/feedback';
 import { ask } from '@/platform/ask';
@@ -28,6 +29,7 @@ export default function Workout() {
   const [exercise, setExercise] = useState<ExerciseId>('pushup');
   const [count, setCount] = useState(0);
   const [pulse, setPulse] = useState(0);
+  const [camera, setCamera] = useState<CameraStatus>('idle');
 
   // The phone sits on the floor untouched during a set: don't let the screen lock,
   // and don't let an app update restart in the middle of counting.
@@ -112,13 +114,16 @@ export default function Workout() {
       scroll={false}
       footer={
         <Row style={{ gap: 8 }}>
-          <Button
-            variant="quiet"
-            style={{ flex: 1 }}
-            label="탭으로 1회"
-            icon={<Ionicons name="hand-left-outline" size={18} color={colors.ink} />}
-            onPress={addRep}
-          />
+          {/* Tapping is only for when the camera can't be used; otherwise the camera counts. */}
+          {camera === 'error' && (
+            <Button
+              variant="quiet"
+              style={{ flex: 1 }}
+              label="탭으로 1회"
+              icon={<Ionicons name="hand-left-outline" size={18} color={colors.ink} />}
+              onPress={addRep}
+            />
+          )}
           <Button
             style={{ flex: 1.2 }}
             label={count > 0 && gainPreview === 0 ? '조금만 더' : '충전하기'}
@@ -153,7 +158,7 @@ export default function Workout() {
 
       {/* The camera takes whatever height is left, so everything fits on one screen. */}
       <View style={{ flex: 1, marginTop: 12 }}>
-        <PoseCamera exercise={exercise} onRep={addRep} fill />
+        <PoseCamera exercise={exercise} onRep={addRep} onStatus={setCamera} autoStart fill />
       </View>
 
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>

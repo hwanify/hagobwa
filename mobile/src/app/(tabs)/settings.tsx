@@ -50,8 +50,8 @@ export default function Settings() {
         <H1 style={{ marginTop: 8 }}>설정</H1>
       </Pressable>
 
-      <H2 style={styles.section}>하루 최대 시간</H2>
-      <Muted>잔고는 이 시간까지만 모여요.</Muted>
+      <H2 style={styles.section}>최대 충전량</H2>
+      <Muted>잔고는 이 시간까지만 쌓여요. 다 쓰면 다시 운동해서 채우면 돼요.</Muted>
       <Row style={styles.chips}>
         {[1, 2, 3, 4].map((h) => (
           <Chip key={h} tone="ink" label={`${h}시간`} active={s.goalHours === h} onPress={() => s.updateSettings({ goalHours: h })} />

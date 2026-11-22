@@ -334,3 +334,17 @@ describe('screen time usage', () => {
     expect(chargeScreenTime(a, 9999, now).balanceSec).toBe(0);
   });
 });
+
+describe('usageBetween', () => {
+  it('adds up locked-app usage for the days in range', async () => {
+    const { usageBetween, emptyBank } = await import('../timebank');
+    const bank = {
+      ...emptyBank(),
+      usage: { '2026-11-16': { screentime: 600 }, '2026-11-17': { screentime: 120, youtube: 60 }, '2026-11-24': { screentime: 999 } },
+    };
+    const mon = new Date(2026, 10, 16).getTime();
+    const nextMon = new Date(2026, 10, 23).getTime();
+    expect(usageBetween(bank, mon, nextMon)).toBe(780);
+    expect(usageBetween(bank, 0, Infinity)).toBe(1779);
+  });
+});

@@ -66,7 +66,9 @@ export function creditWorkout(
   };
   const cutoff = addDays(startOfDay(input.now), -HISTORY_DAYS);
   const workouts = [...state.workouts.filter((w) => w.at >= cutoff), record];
-  return { state: { ...state, balanceSec, workouts }, earnedSec, record };
+  const oldest = dayKey(cutoff);
+  const usage = Object.fromEntries(Object.entries(state.usage).filter(([day]) => day >= oldest));
+  return { state: { ...state, balanceSec, workouts, usage }, earnedSec, record };
 }
 
 function addUsage(usage: BankState['usage'], appId: string, at: number, seconds: number): BankState['usage'] {
@@ -158,6 +160,18 @@ export function weekSeries(state: BankState, now: number): number[] {
 export function usageOnDay(state: BankState, ms: number): number {
   const day = state.usage[dayKey(ms)] ?? {};
   return Object.values(day).reduce((a, b) => a + b, 0);
+}
+
+/** Seconds used in locked apps between local midnights `from` and `to` (to exclusive). */
+export function usageBetween(state: BankState, from: number, to: number): number {
+  let total = 0;
+  for (const [key, apps] of Object.entries(state.usage)) {
+    const [y, m, d] = key.split('-').map(Number);
+    const day = new Date(y, m - 1, d).getTime();
+    if (day < from || day >= to) continue;
+    for (const sec of Object.values(apps)) total += sec;
+  }
+  return total;
 }
 
 export function weekUsageSec(state: BankState, weekStartMs: number): number {

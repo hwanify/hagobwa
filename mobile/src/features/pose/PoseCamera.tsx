@@ -7,9 +7,9 @@ import { HINT_TEXT, RepCounter, type Landmark } from '@/core/repCounter';
 import { colors, font } from '@/theme';
 
 import { POSE_HTML } from './pose-html';
-import type { PoseCameraProps } from './types';
+import type { CameraStatus, PoseCameraProps } from './types';
 
-type Status = 'idle' | 'loading' | 'running' | 'error';
+type Status = CameraStatus;
 
 // react-native-webview's class typings resolve to `never` props under React 19 types; give it explicit ones.
 const CameraWebView = WebView as unknown as ComponentType<WebViewProps & { ref?: Ref<WebView> }>;
@@ -27,7 +27,7 @@ type Msg =
  * it posts joint positions back here and the shared, unit-tested RepCounter counts reps.
  * Video stays on the device. The model (~6 MB) downloads once and is then cached.
  */
-export default function PoseCamera({ exercise, onRep, fill = false }: PoseCameraProps & { fill?: boolean }) {
+export default function PoseCamera({ exercise, onRep, autoStart = false, onStatus, fill = false }: PoseCameraProps & { fill?: boolean }) {
   const webRef = useRef<WebView>(null);
   const counterRef = useRef(new RepCounter(exercise));
   const onRepRef = useRef(onRep);
@@ -65,6 +65,15 @@ export default function PoseCamera({ exercise, onRep, fill = false }: PoseCamera
     if (readyRef.current) inject('window.hagoStart()');
     else pendingStartRef.current = true;
   };
+
+  useEffect(() => {
+    onStatus?.(status);
+  }, [onStatus, status]);
+  useEffect(() => {
+    // The page may still be loading: start() then waits for its 'ready' message.
+    if (autoStart) void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stop = () => {
     inject('window.hagoStop()');

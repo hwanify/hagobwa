@@ -17,9 +17,10 @@ import {
 import { openCharge } from "@/navigation";
 import { BarbellIcon } from "@/components/tab-icons";
 import { appById, type AppId } from "@/core/apps";
+import { addDays, startOfWeek } from "@/core/dates";
 import { formatDuration, minutesOf } from "@/core/format";
 import { EXERCISE_LABEL } from "@/core/rates";
-import { capFor, streakDays, todayReps } from "@/core/timebank";
+import { capFor, streakDays, todayReps, usageBetween } from "@/core/timebank";
 import { EmergencyUnlock } from "@/features/lock/EmergencyUnlock";
 import { useLockPicker } from "@/features/lock/LockPicker";
 import { blocker } from "@/platform/blocker";
@@ -36,6 +37,8 @@ export default function Home() {
   const balance = bank.balanceSec;
   const streak = streakDays(bank, now);
   const reps = todayReps(bank, now);
+  const week = startOfWeek(now);
+  const weekUsed = usageBetween(bank, week, addDays(week, 7));
   const last = bank.workouts.reduce<(typeof bank.workouts)[number] | undefined>(
     (a, w) => (!a || w.at > a.at ? w : a),
     undefined,
@@ -79,8 +82,8 @@ export default function Home() {
           <T style={styles.stat}>{reps}회</T>
         </Card>
         <Card style={{ flex: 1 }}>
-          <Muted style={{ fontSize: 12 }}>잔고</Muted>
-          <T style={styles.stat}>{formatDuration(balance)}</T>
+          <Muted style={{ fontSize: 12 }}>이번 주 사용</Muted>
+          <T style={styles.stat}>{formatDuration(weekUsed)}</T>
         </Card>
       </Row>
 

@@ -5,7 +5,7 @@ import { T } from '@/components/ui';
 import { HINT_TEXT, RepCounter, type Landmark } from '@/core/repCounter';
 import { colors, font } from '@/theme';
 
-import type { PoseCameraProps } from './types';
+import type { CameraStatus, PoseCameraProps } from './types';
 
 const MP_VERSION = '0.10.14';
 const WASM_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -17,7 +17,7 @@ const LINKS: [number, number][] = [
   [23, 24], [23, 25], [25, 27], [24, 26], [26, 28],
 ];
 
-type Status = 'idle' | 'loading' | 'running' | 'error';
+type Status = CameraStatus;
 
 interface Landmarker {
   detectForVideo(video: HTMLVideoElement, ts: number): { landmarks: Landmark[][] };
@@ -28,7 +28,7 @@ interface Landmarker {
  * Browser rep counter: webcam + MediaPipe Pose Landmarker, all on-device.
  * Frames never leave the browser.
  */
-export default function PoseCamera({ exercise, onRep, fill = false }: PoseCameraProps & { fill?: boolean }) {
+export default function PoseCamera({ exercise, onRep, autoStart = false, onStatus, fill = false }: PoseCameraProps & { fill?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
@@ -123,6 +123,14 @@ export default function PoseCamera({ exercise, onRep, fill = false }: PoseCamera
       );
     }
   }
+
+  useEffect(() => {
+    onStatus?.(status);
+  }, [onStatus, status]);
+  useEffect(() => {
+    if (autoStart) void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function stop() {
     stopRef.current?.();
