@@ -1,10 +1,14 @@
+/* Same tokens and shapes as the app (mobile/src/theme.ts, components/ui.tsx). */
 :root {
   --paper: #F7F7F3;
   --ground: #ECEDE7;
-  --ink: #1C1C1A;
-  --mute: #70706A;
-  --line: #DDDDD6;
+  --line: #D5D6CF;
+  --ink: #16181B;
+  --mute: #5C5F66;
   --red: #E0454A;
+  --white: #FFFFFF;
+  --r-md: 16px;
+  --r-lg: 22px;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -12,100 +16,96 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font: 17px/1.6 "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  /* iPhone: the same system font the app uses. Elsewhere: Pretendard, which is close to it. */
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard Variable", Pretendard, "Noto Sans KR", sans-serif;
   word-break: keep-all;
 }
 a { color: inherit; }
 img { max-width: 100%; display: block; }
+.num { font-family: Menlo, ui-monospace, monospace; font-weight: 700; }
 
 .nav {
   position: sticky; top: 0; z-index: 5;
   display: flex; justify-content: space-between; align-items: center;
-  max-width: 1040px; margin: 0 auto; padding: 14px 20px;
-  background: rgba(247, 247, 243, 0.9);
-  backdrop-filter: saturate(1.4) blur(10px);
-  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  max-width: 960px; margin: 0 auto; padding: 14px 24px;
+  background: rgba(247, 247, 243, 0.92);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
-.logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; text-decoration: none; }
+.logo { font-size: 24px; font-weight: 900; letter-spacing: -1px; text-decoration: none; }
 .logo span { color: var(--red); }
-.logo.small { font-size: 18px; margin: 0 0 6px; }
-.nav-link { font-size: 14px; color: var(--mute); text-decoration: none; }
+.logo.small { font-size: 20px; margin: 0 0 8px; }
+.nav-link { font-size: 13px; font-weight: 600; color: var(--mute); text-decoration: none; }
 
-main { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
-section { padding: 56px 0; }
-h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.25; margin: 0; }
-h2 { font-size: 26px; font-weight: 850; margin-bottom: 24px; }
-h3 { font-size: 18px; font-weight: 800; }
-p { margin: 6px 0 0; }
+main { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+section { padding: 44px 0; }
+h1, h2, h3 { margin: 0; }
+h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; line-height: 36px; }
+h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; margin-bottom: 16px; }
+h3 { font-size: 15px; font-weight: 700; }
+p { margin: 4px 0 0; }
+.muted, .steps p, .card p, .faq details p { color: var(--mute); font-size: 14px; line-height: 21px; }
 
-.hero { text-align: center; padding-top: 48px; }
-.hero-icon { width: 88px; height: 88px; border-radius: 22px; margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(224, 69, 74, 0.25); }
-.hero h1 { font-size: clamp(38px, 9vw, 64px); font-weight: 900; }
-.lead { font-size: clamp(17px, 4.4vw, 20px); color: var(--mute); margin-top: 16px; }
-.cta { margin-top: 28px; }
-.store {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--ink); color: var(--paper);
-  border-radius: 999px; padding: 14px 24px;
-  font-weight: 700; font-size: 16px; text-decoration: none;
+/* Hero: like the app's home screen */
+.hero { padding-top: 28px; }
+.hero-icon { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 20px; }
+.hero h1 { font-size: clamp(30px, 8vw, 44px); line-height: 1.25; }
+.lead { color: var(--mute); font-size: 16px; line-height: 24px; margin-top: 10px; }
+.cta { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--r-md); padding: 16px;
+  font-size: 16px; font-weight: 700; text-decoration: none;
+  background: var(--red); color: var(--white);
 }
-.store.soon { opacity: 0.85; cursor: default; }
-.note { font-size: 13px; color: var(--mute); margin-top: 12px; }
+.btn.quiet { background: var(--ground); color: var(--ink); }
+.btn.soon { cursor: default; }
+.note { font-size: 13px; color: var(--mute); margin-top: 10px; }
 
-.steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.steps li { display: flex; gap: 16px; align-items: flex-start; background: var(--ground); border-radius: 20px; padding: 20px; }
+/* Grey cards, as on 홈 / 기록 */
+.card { background: var(--ground); border-radius: var(--r-md); padding: 16px; }
+.steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; background: var(--ground); border-radius: var(--r-md); padding: 16px; }
 .steps b {
-  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--red); color: #fff; font-size: 16px;
+  background: var(--red); color: var(--white); font-size: 13px;
 }
-.steps p, .card p { color: var(--mute); font-size: 15px; }
 
-.shots { padding-top: 8px; }
+.shots { padding-top: 0; }
 .rail {
-  display: flex; gap: 14px; overflow-x: auto;
-  scroll-snap-type: x mandatory; padding-bottom: 8px;
-  margin: 0 -20px; padding-left: 20px; padding-right: 20px;
-  scrollbar-width: none;
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+  margin: 0 -24px; padding: 0 24px 8px; scrollbar-width: none;
 }
 .rail::-webkit-scrollbar { display: none; }
-.rail img {
-  flex: none; width: min(62vw, 240px); height: auto;
-  border-radius: 22px; scroll-snap-align: center;
-}
+.rail img { flex: none; width: min(60vw, 230px); height: auto; border-radius: var(--r-lg); scroll-snap-align: center; }
 
-.grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
-.card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+.grid { display: grid; gap: 8px; grid-template-columns: 1fr; }
 
-.faq details { border-bottom: 1px solid var(--line); padding: 16px 0; }
-.faq summary { font-weight: 700; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
-.faq summary::after { content: "+"; color: var(--mute); font-weight: 400; font-size: 22px; line-height: 1; }
+.faq details { border-bottom: 1px solid var(--line); padding: 14px 0; }
+.faq summary { font-weight: 700; font-size: 15px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq summary::after { content: "+"; color: var(--mute); font-weight: 400; font-size: 20px; line-height: 1; }
 .faq details[open] summary::after { content: "–"; }
 .faq summary::-webkit-details-marker { display: none; }
-.faq details p { color: var(--mute); font-size: 15px; margin-top: 10px; }
+.faq details p { margin-top: 8px; }
 
-footer {
-  max-width: 1040px; margin: 24px auto 0; padding: 32px 20px 56px;
-  border-top: 1px solid var(--line); font-size: 14px;
-}
+footer { max-width: 960px; margin: 16px auto 0; padding: 28px 24px 48px; border-top: 1px solid var(--line); font-size: 13px; }
 footer p { margin: 4px 0; }
 footer a { text-decoration: underline; text-underline-offset: 3px; }
-.muted { color: var(--mute); font-size: 12px; }
 
 @media (min-width: 760px) {
   .steps ol { grid-template-columns: repeat(3, 1fr); }
   .steps li { flex-direction: column; }
   .grid { grid-template-columns: repeat(2, 1fr); }
-  .rail { justify-content: center; margin: 0; padding-left: 0; padding-right: 0; }
-  .rail img { width: 190px; }
+  .rail { justify-content: center; margin: 0; padding: 0 0 8px; }
+  .rail img { width: 172px; }
 }
 
 /* Policy page */
-.doc { max-width: 680px; margin: 0 auto; padding: 24px 20px 64px; }
-.doc h1 { font-size: 28px; font-weight: 900; margin-top: 16px; }
-.doc h2 { font-size: 19px; margin: 32px 0 8px; }
-.doc ul { padding-left: 20px; margin: 8px 0 0; }
+.doc { max-width: 680px; margin: 0 auto; padding: 16px 24px 56px; }
+.doc h1 { margin-top: 8px; }
+.doc h2 { font-size: 17px; margin: 28px 0 6px; }
+.doc ul { padding-left: 20px; margin: 6px 0 0; }
 .doc li { margin: 4px 0; }
-.doc hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+.doc hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
 .doc a { color: var(--red); }
-.doc .date { color: var(--mute); font-size: 14px; }
+.doc .date { color: var(--mute); font-size: 13px; }
