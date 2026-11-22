@@ -9,7 +9,7 @@
 - 연령 등급 → 편집 → 모든 질문 "아니요" → 4+
 
 ## 2. 앱 개인정보 보호 (왼쪽 메뉴)
-- 개인정보처리방침 URL: `https://github.com/hwanify/pushupapp/blob/main/docs/PRIVACY.md`
+- 개인정보처리방침 URL: `https://hwanify.github.io/pushupapp/privacy/`
 - 데이터 수집 → **"아니요, 이 앱에서 데이터를 수집하지 않습니다"** → 게시
 
 ## 3. 가격 및 사용 가능 여부
@@ -19,7 +19,7 @@
 ## 4. 버전 페이지 (iOS 앱 → 1.0 제출 준비 중)
 - 스크린샷 (6.9인치 디스플레이): `docs/store-screenshots/store-1.png` ~ `store-5.png` 순서대로
 - 프로모션 텍스트 / 설명 / 키워드: `docs/APP_STORE.md`에서 복사
-- 지원 URL: `https://github.com/hwanify/pushupapp/issues`
+- 지원 URL: `https://hwanify.github.io/pushupapp/`
 - 저작권: `2026 (본인 이름)`
 - **빌드**: "빌드 추가" → TestFlight에 있는 **가장 최신 빌드** 선택
   - 수출 규정(암호화) 질문이 나오면 "아니요" (앱 설정에 이미 표시돼 있어서 안 나올 수도 있어요)
