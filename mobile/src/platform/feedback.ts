@@ -88,8 +88,21 @@ function playerFor(n: number): AudioPlayer | null {
   if (clip === undefined) return null;
   let p = players.get(n);
   if (!p) {
-    p = createAudioPlayer(clip);
-    players.set(n, p);
+    const player = createAudioPlayer(clip);
+    // When a clip ends, stop it for good and rewind. Otherwise iOS can count it as
+    // "was playing" and replay it when the audio session comes back after an interruption
+    // (e.g. the camera starting), which made a stray "둘" pop out after the preview.
+    player.addListener('playbackStatusUpdate', (s) => {
+      if (!s.didJustFinish) return;
+      try {
+        player.pause();
+        void player.seekTo(0);
+      } catch {
+        // released meanwhile
+      }
+    });
+    players.set(n, player);
+    p = player;
   }
   return p;
 }
@@ -105,6 +118,7 @@ function prepareAudio(): void {
  * first rep lands instead of waiting for the audio session and the file to load.
  */
 export function preloadCounts(): void {
+  workoutOpen = true;
   try {
     prepareAudio();
     playerFor(1);
@@ -138,10 +152,22 @@ export function sayCount(n: number): void {
   }
 }
 
+let previewTimers: ReturnType<typeof setTimeout>[] = [];
+let workoutOpen = false;
+
+/** Settings "구령 들어보기": 하나, 둘, 셋, then free the players so nothing lingers. */
+export function previewCounts(): void {
+  previewTimers.forEach(clearTimeout);
+  previewTimers = [1, 2, 3].map((n, i) => setTimeout(() => sayCount(n), i * 700));
+  previewTimers.push(setTimeout(() => !workoutOpen && releaseCounts(), 3 * 700 + 1500));
+}
+
 /** Free the preloaded clips when a workout ends. */
 export function releaseCounts(): void {
+  workoutOpen = false;
   for (const p of players.values()) {
     try {
+      p.pause();
       p.remove();
     } catch {
       // already gone

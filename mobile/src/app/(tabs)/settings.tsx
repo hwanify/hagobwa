@@ -7,7 +7,7 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Chip, H1, H2, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { DIFFICULTIES, rateLabel } from '@/core/rates';
-import { sayCount } from '@/platform/feedback';
+import { previewCounts } from '@/platform/feedback';
 import { clearPicked } from '@/features/lock/LockPicker';
 import { blocker } from '@/platform/blocker';
 import { useAppStore } from '@/store/app-store';
@@ -74,7 +74,7 @@ export default function Settings() {
       <H2 style={styles.section}>구령</H2>
       <Pressable
         accessibilityRole="button"
-        onPress={() => [1, 2, 3].forEach((n, i) => setTimeout(() => sayCount(n), i * 700))}
+        onPress={previewCounts}
         style={styles.toggleRow}
       >
         <T>구령 들어보기</T>
