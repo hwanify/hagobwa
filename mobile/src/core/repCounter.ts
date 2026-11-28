@@ -229,7 +229,8 @@ function frontPushup(lm: Landmark[]): Measurement | null {
   const legsShow = vis(L.h) >= 0.6 && vis(R.h) >= 0.6 && vis(L.k) >= 0.6 && vis(R.k) >= 0.6;
   const noseAbove = vis(nose) >= VIS ? (shoulderY - nose.y) / width : 0;
   const upright = legsShow ? (L.k.y + R.k.y - L.h.y - R.h.y) / 2 > 0.7 * width : noseAbove > 0.7;
-  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.4 && !upright;
+  // Hands below the shoulders (true all through a rep; the top is checked when a set starts).
+  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.1 && !upright;
   return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps, upright };
 }
 
@@ -683,7 +684,8 @@ export class RepCounter {
 
     let progress: number;
     if (view === 'front') {
-      // Straighter arms than at the start raise the top, gently and capped, so one bad frame can't.
+      // Straighter arms than at the start raise the top, gently and capped (frames are already
+      // spike-filtered), so one bad frame can't.
       if (gap > this.top) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
       progress = frontProgress(gap / this.top);
     } else {
@@ -721,7 +723,8 @@ export class RepCounter {
     this.anchor = hands;
     this.anchorScale = scale;
     this.top = view === 'front' ? top : 1;
-    this.topCap = this.top * 1.25;
+    // If the set started mid-rep the top is underestimated: let it grow to the real one.
+    this.topCap = this.top * 1.6;
     if (view === 'side') {
       // Learn the elbow range from this set only, not from getting into position.
       this.angleRange.reset();
