@@ -5,7 +5,7 @@
  *
  * Protocol (postMessage JSON):
  *   page -> app: {t:'ready'} | {t:'status', s} | {t:'error', name, msg} | {t:'lm', ts, lm: [[x,y,vis]x33] | null}
- *   app -> page: window.hagoStart(), window.hagoStop()
+ *   app -> page: window.hagoStart(), window.hagoStop(), window.hagoSetExercise(e), window.hagoFlash()
  */
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL =
@@ -26,7 +26,6 @@ export const POSE_HTML = `<!doctype html>
 <canvas id="c"></canvas>
 <script type="module">
   const post = (m) => window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(m));
-  const LINKS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
   const v = document.getElementById('v');
   const c = document.getElementById('c');
   const ctx = c.getContext('2d');
@@ -44,24 +43,40 @@ export const POSE_HTML = `<!doctype html>
     return landmarker;
   }
 
-  // Minimal stick figure: just enough to see that a person is detected.
+  // Body in faint white, the working limb (arm for push-ups, leg for squats) in glowing red.
+  // A counted rep makes the limb flash brighter for a moment.
+  let exercise = 'pushup', flashUntil = 0;
+  const BODY = [[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[11,13],[13,15],[12,14],[14,16]];
+  const LIMB = { pushup: { left: [11,13,15], right: [12,14,16] }, squat: { left: [23,25,27], right: [24,26,28] } };
   function draw(lm) {
     if (c.width !== v.videoWidth) c.width = v.videoWidth;
     if (c.height !== v.videoHeight) c.height = v.videoHeight;
     ctx.clearRect(0, 0, c.width, c.height);
     if (!lm) return;
-    const ok = (i) => ((lm[i] && lm[i].visibility) || 0) >= 0.4;
+    const vis = (i) => (lm[i] && lm[i].visibility) || 0;
+    const ok = (i) => vis(i) >= 0.4;
     const P = (i) => [lm[i].x * c.width, lm[i].y * c.height];
-    const mid = (a, b) => [(lm[a].x + lm[b].x) / 2 * c.width, (lm[a].y + lm[b].y) / 2 * c.height];
-    const line = (p, q) => { ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); };
-    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(224,69,74,0.9)';
-    for (const [a, b] of LINKS) if (ok(a) && ok(b)) line(P(a), P(b));
-    if (ok(0) && ok(11) && ok(12)) {
-      const r = Math.hypot((lm[11].x - lm[12].x) * c.width, (lm[11].y - lm[12].y) * c.height) * 0.3;
-      ctx.beginPath(); ctx.arc(lm[0].x * c.width, lm[0].y * c.height, Math.max(10, r), 0, Math.PI * 2); ctx.stroke();
-      line(mid(11, 12), P(0));
+    const u = Math.max(c.width, c.height) / 640;
+    const sideScore = (ids) => ids.reduce((n, i) => n + vis(i), 0);
+    const sides = LIMB[exercise] || LIMB.pushup;
+    const limb = sideScore(sides.left) >= sideScore(sides.right) ? sides.left : sides.right;
+    const inLimb = (a, b) => limb.includes(a) && limb.includes(b);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3 * u;
+    for (const [a, b] of BODY) {
+      if (inLimb(a, b) || !ok(a) || !ok(b)) continue;
+      ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b)); ctx.stroke();
     }
+    if (!limb.every(ok)) return;
+    const flash = performance.now() < flashUntil;
+    ctx.shadowColor = 'rgba(224,69,74,0.95)'; ctx.shadowBlur = (flash ? 34 : 18) * u;
+    ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F'; ctx.lineWidth = (flash ? 9 : 7) * u;
+    ctx.beginPath(); ctx.moveTo(...P(limb[0])); ctx.lineTo(...P(limb[1])); ctx.lineTo(...P(limb[2])); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
+    for (const i of limb) { const [x, y] = P(i); ctx.beginPath(); ctx.arc(x, y, 5 * u, 0, Math.PI * 2); ctx.fill(); }
   }
+  window.hagoSetExercise = (e) => { exercise = e; };
+  window.hagoFlash = () => { flashUntil = performance.now() + 260; };
 
   function loop() {
     if (!running) return;

@@ -12,10 +12,6 @@ const WASM_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
-const LINKS: [number, number][] = [
-  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24],
-  [23, 24], [23, 25], [25, 27], [24, 26], [26, 28],
-];
 
 type Status = CameraStatus;
 
@@ -34,6 +30,8 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
   const stopRef = useRef<(() => void) | null>(null);
   const counterRef = useRef(new RepCounter(exercise));
   const onRepRef = useRef(onRep);
+  const exerciseRef = useRef(exercise);
+  exerciseRef.current = exercise;
   const [status, setStatus] = useState<Status>('idle');
   const [hint, setHint] = useState('');
   const [angle, setAngle] = useState<number | null>(null);
@@ -83,6 +81,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
       let lastVideoTime = -1;
       let lastUi = 0;
       let lastDetect = 0;
+      let flashUntil = 0;
 
       const loop = () => {
         raf = requestAnimationFrame(loop);
@@ -92,9 +91,12 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
         lastDetect = now;
         lastVideoTime = video.currentTime;
         const lm = landmarker.detectForVideo(video, now).landmarks[0];
-        if (ctx) draw(ctx, canvas, video, lm);
         const u = counterRef.current.update(lm, now);
-        if (u.repCompleted) onRepRef.current();
+        if (u.repCompleted) {
+          onRepRef.current();
+          flashUntil = now + 260;
+        }
+        if (ctx) draw(ctx, canvas, video, lm, exerciseRef.current, now < flashUntil);
         if (now - lastUi > 150) {
           lastUi = now;
           setAngle(u.angle === null ? null : Math.round(u.angle));
@@ -165,33 +167,62 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
   );
 }
 
-/** Minimal stick figure: just enough to see that a person is detected. */
-function draw(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, video: HTMLVideoElement, lm?: Landmark[]) {
+const BODY: [number, number][] = [
+  [11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [11, 13], [13, 15], [12, 14], [14, 16],
+];
+const LIMB = { pushup: { left: [11, 13, 15], right: [12, 14, 16] }, squat: { left: [23, 25, 27], right: [24, 26, 28] } };
+
+/** Body in faint white, the working limb in glowing red; brighter for a moment after a rep. */
+function draw(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  lm: Landmark[] | undefined,
+  exercise: 'pushup' | 'squat',
+  flash: boolean,
+) {
   if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
   if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!lm) return;
   const W = canvas.width;
   const H = canvas.height;
-  const ok = (i: number) => (lm[i]?.visibility ?? 0) >= 0.4;
+  const u = Math.max(W, H) / 640;
+  const vis = (i: number) => lm[i]?.visibility ?? 0;
+  const ok = (i: number) => vis(i) >= 0.4;
   const P = (i: number): [number, number] => [lm[i].x * W, lm[i].y * H];
-  const line = (p: [number, number], q: [number, number]) => {
-    ctx.beginPath();
-    ctx.moveTo(p[0], p[1]);
-    ctx.lineTo(q[0], q[1]);
-    ctx.stroke();
-  };
-  ctx.lineWidth = 4;
+  const score = (ids: number[]) => ids.reduce((n, i) => n + vis(i), 0);
+  const sides = LIMB[exercise];
+  const limb = score(sides.left) >= score(sides.right) ? sides.left : sides.right;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(224,69,74,0.9)';
-  for (const [a, b] of LINKS) if (ok(a) && ok(b)) line(P(a), P(b));
-  if (ok(0) && ok(11) && ok(12)) {
-    const r = Math.hypot((lm[11].x - lm[12].x) * W, (lm[11].y - lm[12].y) * H) * 0.3;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 3 * u;
+  for (const [a, b] of BODY) {
+    if ((limb.includes(a) && limb.includes(b)) || !ok(a) || !ok(b)) continue;
     ctx.beginPath();
-    ctx.arc(lm[0].x * W, lm[0].y * H, Math.max(10, r), 0, Math.PI * 2);
+    ctx.moveTo(...P(a));
+    ctx.lineTo(...P(b));
     ctx.stroke();
-    line([((lm[11].x + lm[12].x) / 2) * W, ((lm[11].y + lm[12].y) / 2) * H], P(0));
+  }
+  if (!limb.every(ok)) return;
+  ctx.shadowColor = 'rgba(224,69,74,0.95)';
+  ctx.shadowBlur = (flash ? 34 : 18) * u;
+  ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F';
+  ctx.lineWidth = (flash ? 9 : 7) * u;
+  ctx.beginPath();
+  ctx.moveTo(...P(limb[0]));
+  ctx.lineTo(...P(limb[1]));
+  ctx.lineTo(...P(limb[2]));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  for (const i of limb) {
+    const [x, y] = P(i);
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * u, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

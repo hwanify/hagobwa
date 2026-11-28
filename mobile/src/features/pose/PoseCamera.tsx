@@ -31,6 +31,8 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
   const webRef = useRef<WebView>(null);
   const counterRef = useRef(new RepCounter(exercise));
   const onRepRef = useRef(onRep);
+  const exerciseRef = useRef(exercise);
+  exerciseRef.current = exercise;
   const readyRef = useRef(false);
   const pendingStartRef = useRef(false);
   const lastUiRef = useRef(0);
@@ -43,6 +45,8 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
   }, [onRep]);
   useEffect(() => {
     counterRef.current.setExercise(exercise);
+    inject(`window.hagoSetExercise && window.hagoSetExercise('${exercise}')`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exercise]);
 
   const inject = (js: string) => webRef.current?.injectJavaScript(`${js};true;`);
@@ -92,6 +96,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
     switch (msg.t) {
       case 'ready':
         readyRef.current = true;
+        webRef.current?.injectJavaScript(`window.hagoSetExercise('${exerciseRef.current}');true;`);
         if (pendingStartRef.current) {
           pendingStartRef.current = false;
           webRef.current?.injectJavaScript('window.hagoStart();true;');
@@ -114,7 +119,10 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
       case 'lm': {
         const lm: Landmark[] | undefined = msg.lm?.map(([x, y, visibility]) => ({ x, y, visibility }));
         const u = counterRef.current.update(lm, msg.ts);
-        if (u.repCompleted) onRepRef.current();
+        if (u.repCompleted) {
+          onRepRef.current();
+          webRef.current?.injectJavaScript('window.hagoFlash && window.hagoFlash();true;');
+        }
         if (msg.ts - lastUiRef.current > 150) {
           lastUiRef.current = msg.ts;
           setAngle(u.angle === null ? null : Math.round(u.angle));
