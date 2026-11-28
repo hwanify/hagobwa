@@ -294,9 +294,10 @@ function frontSquat(lm: Landmark[], forced = false): Measurement | null {
   if (depth < -0.5 || depth > 6) return { angle: null, depth: null, valid: false, hint: '', view: 'front', scale };
   // Standing: both feet down (level), knees between hips and feet, hips well above the feet and
   // the shoulders above the hips. Whether the legs were straight is checked when a set starts.
+  // (A foot a little ahead of the other sits lower on screen: allow up to 0.7 shoulder widths.)
   const standing =
     legs.length === 2 &&
-    Math.abs(L.a.y - R.a.y) <= 0.35 * scale &&
+    Math.abs(L.a.y - R.a.y) <= 0.7 * scale &&
     depth >= 0.5 &&
     [L, R].every((j) => vis(j.k) >= VIS && j.k.y > j.h.y && j.k.y < j.a.y) &&
     (!shouldersShow || mid(L.s, R.s).y < hips.y - 0.5 * scale);
