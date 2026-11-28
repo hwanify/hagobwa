@@ -151,8 +151,9 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
     const front = frontPushup(lm);
     if (front) return front;
     const m = sidePushup(lm, side ?? bestSide(lm, exercise));
-    // Shoulders above the top edge: the phone is too close or tilted down.
-    if (!m.valid && (lm[11].y < 0.03 || lm[12].y < 0.03)) return { ...m, hint: 'show-head' };
+    // Shoulders at/above the top edge: the phone is too close or tilted down. Say so, but keep
+    // whatever could still be measured.
+    if (lm[11].y < 0.03 || lm[12].y < 0.03) return { ...m, hint: 'show-head' };
     return m;
   }
 
@@ -398,8 +399,13 @@ const HOLD_MISSES = 3;
 /** The set pauses when the hands are off their spot in this many of the last DRIFT_WINDOW frames. */
 const DRIFT_FRAMES = 4;
 const DRIFT_WINDOW = 6;
-/** The camera view (front/side) must read differently this many frames in a row to end a set. */
-const VIEW_CHANGE_FRAMES = 8;
+/**
+ * The camera view (front/side) must read differently this many frames in a row (~1.5 s) to
+ * end a set. Shorter flips happen when a shoulder pokes out of the picture at the top of a rep.
+ */
+const VIEW_CHANGE_FRAMES = 27;
+/** Through dropouts this short the last reading holds, so a rep that just reached the top still counts. */
+const HOLD_GAP_MS = 300;
 
 /**
  * Counts reps from a stream of pose frames.
@@ -444,6 +450,8 @@ export class RepCounter {
   private lostSince: number | null = null;
   private drift: boolean[] = [];
   private viewMisses = 0;
+  private lastProgress: number | null = null;
+  private lastUsableAt = -Infinity;
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
@@ -487,6 +495,8 @@ export class RepCounter {
     this.lostSince = null;
     this.drift = [];
     this.viewMisses = 0;
+    this.lastProgress = null;
+    this.lastUsableAt = -Infinity;
   }
 
   /** Stop counting until the person gets into position again. Keeps the count. */
@@ -602,11 +612,15 @@ export class RepCounter {
     }
     if (!usable) {
       if (this.hold && ++this.hold.misses > HOLD_MISSES) this.hold = null;
+      let repCompleted = false;
       if (this.ready) {
         this.lostSince ??= nowMs;
         if (nowMs - this.lostSince > LOST_MS) this.endSet();
+        else if (this.lastProgress !== null && nowMs - this.lastUsableAt <= HOLD_GAP_MS) {
+          repCompleted = this.step(this.lastProgress, nowMs);
+        }
       }
-      return out(null, false, m.hint || (this.ready ? '' : 'get-ready'));
+      return out(null, repCompleted, m.hint || (this.ready ? '' : 'get-ready'));
     }
     this.lostSince = null;
     const view = m.view!;
@@ -640,6 +654,8 @@ export class RepCounter {
     } else {
       progress = sideProgress ?? 1;
     }
+    this.lastProgress = progress;
+    this.lastUsableAt = nowMs;
     return out(progress, this.step(progress, nowMs));
   }
 
