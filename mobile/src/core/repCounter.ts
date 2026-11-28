@@ -220,9 +220,14 @@ function frontPushup(lm: Landmark[]): Measurement | null {
   const shoulderY = (L.s.y + R.s.y) / 2;
   // Plank: both hands on the floor (level) below the shoulders, and the head not above the
   // shoulders like when standing or sitting. Looking down (nose hidden) is fine.
-  const headAbove = vis(nose) >= VIS && nose.y < shoulderY - 0.3 * width;
-  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.4 && !headAbove;
-  const upright = vis(nose) >= VIS && nose.y < shoulderY - 0.4 * width;
+  // Upright = standing/sitting: the hips show well below the shoulders (in a plank seen from the
+  // front they hide behind the body or sit close under the chest, even from a very low phone),
+  // or, with no hips in sight, the head sits far above the shoulders. Looking up at the phone
+  // at the top of a push-up raises the head ~0.5 shoulder widths, which stays a plank.
+  const hipsShow = vis(L.h) >= 0.7 && vis(R.h) >= 0.7;
+  const noseAbove = vis(nose) >= VIS ? (shoulderY - nose.y) / width : 0;
+  const upright = hipsShow ? (L.h.y + R.h.y) / 2 - shoulderY > 0.95 * width && noseAbove > 0.15 : noseAbove > 0.7;
+  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.4 && !upright;
   return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps, upright };
 }
 

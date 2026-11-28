@@ -227,7 +227,7 @@ interface FrontOpts {
   noise?: number;
   /** Wrists out of sight (phone too close / being carried). */
   noHands?: boolean;
-  /** Upright body (standing/sitting): head above the shoulders. */
+  /** Upright body (standing): hips in view well below the shoulders, head above them. */
   upright?: boolean;
   /** Raise the hands toward the shoulders by this fraction (arms moving, not planted). */
   lift?: number;
@@ -257,12 +257,20 @@ function frontPose(down: number, o: FrontOpts = {}): Landmark[] {
     set(s, sx, shoulderY);
     set(e, sx + dir * (0.03 + 0.08 * down) + n(), (shoulderY + wristY) / 2 - 0.03 * down + n(), 0.8);
     set(w, 0.5 + dir * 0.19 + n(), wristY + n(), o.noHands ? 0.1 : 0.9);
-    // Hips/legs are behind the body from here: low-confidence guesses near the shoulders.
-    set(h, sx, shoulderY + 0.05, 0.3);
-    set(k, sx, shoulderY + 0.08, 0.2);
-    set(a, sx, shoulderY + 0.02, 0.2);
+    if (o.upright) {
+      // Standing in front of the phone: hips, knees and ankles in plain view below.
+      set(h, sx * 0.9 + 0.05, shoulderY + 1.3 * width, 0.95);
+      set(k, sx * 0.9 + 0.05, shoulderY + 2.4 * width, 0.9);
+      set(a, sx * 0.9 + 0.05, shoulderY + 3.4 * width, 0.9);
+    } else {
+      // Hips/legs are behind the body from here: low-confidence guesses near the shoulders.
+      set(h, sx, shoulderY + 0.05, 0.3);
+      set(k, sx, shoulderY + 0.08, 0.2);
+      set(a, sx, shoulderY + 0.02, 0.2);
+    }
   }
-  set(0, 0.5, o.upright ? shoulderY - 0.6 * width : shoulderY + 0.02, 0.95);
+  // Standing: head above the shoulders (as measured on real footage, ~0.3-0.4 shoulder widths).
+  set(0, 0.5, o.upright ? shoulderY - 0.35 * width : shoulderY + 0.02, 0.95);
   return lm;
 }
 
