@@ -5,7 +5,10 @@
  *
  * Protocol (postMessage JSON):
  *   page -> app: {t:'ready'} | {t:'status', s} | {t:'error', name, msg} | {t:'lm', ts, lm: [[x,y,vis]x33] | null}
- *   app -> page: window.hagoStart(), window.hagoStop(), window.hagoSetExercise(e), window.hagoFlash()
+ *     x and y are both divided by the frame width (y runs to height/width), so the app's
+ *     distances and angles aren't squashed by the 3:4 frame.
+ *   app -> page: window.hagoStart(), window.hagoStop(), window.hagoSetExercise(e), window.hagoFlash(),
+ *     window.hagoSetReady(bool) (white lines while getting into position, red once counting)
  */
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL =
@@ -74,7 +77,7 @@ export const POSE_HTML = `<!doctype html>
 
   // Body in faint white, the working limb (arm for push-ups, leg for squats) in glowing red.
   // A counted rep makes the limb flash brighter for a moment.
-  let exercise = 'pushup', flashUntil = 0;
+  let exercise = 'pushup', flashUntil = 0, ready = false;
   const limbOn = {};
   const BODY = [[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[11,13],[13,15],[12,14],[14,16]];
   const LIMB = { pushup: { left: [11,13,15], right: [12,14,16] }, squat: { left: [23,25,27], right: [24,26,28] } };
@@ -113,14 +116,16 @@ export const POSE_HTML = `<!doctype html>
     const flash = performance.now() < flashUntil;
     for (const limb of limbs) {
       if (!shown(limb)) continue;
-      ctx.shadowColor = 'rgba(224,69,74,0.95)'; ctx.shadowBlur = (flash ? 34 : 18) * u;
-      ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F'; ctx.lineWidth = (flash ? 9 : 7) * u;
+      // Not counting yet (getting into position): plain white. Counting: glowing red.
+      ctx.shadowColor = ready ? 'rgba(224,69,74,0.95)' : 'rgba(255,255,255,0.6)'; ctx.shadowBlur = (flash ? 34 : ready ? 18 : 8) * u;
+      ctx.strokeStyle = flash ? '#FF8A8D' : ready ? '#FF5A5F' : 'rgba(255,255,255,0.85)'; ctx.lineWidth = (flash ? 9 : 7) * u;
       ctx.beginPath(); ctx.moveTo(...P(limb[0])); for (const i of limb.slice(1)) ctx.lineTo(...P(i)); ctx.stroke();
       ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
       for (const i of limb) { const [x, y] = P(i); ctx.beginPath(); ctx.arc(x, y, 5 * u, 0, Math.PI * 2); ctx.fill(); }
     }
   }
   window.hagoSetExercise = (e) => { exercise = e; };
+  window.hagoSetReady = (r) => { ready = !!r; };
   window.hagoFlash = () => { flashUntil = performance.now() + 260; };
 
   function loop() {
@@ -133,7 +138,8 @@ export const POSE_HTML = `<!doctype html>
     lastVideoTime = v.currentTime;
     const lm = steady(landmarker.detectForVideo(v, now).landmarks[0], now);
     draw(lm);
-    post({ t: 'lm', ts: now, lm: lm ? lm.map((p) => [+p.x.toFixed(4), +p.y.toFixed(4), +((p.visibility || 0).toFixed(3))]) : null });
+    const ar = v.videoHeight / (v.videoWidth || 1);
+    post({ t: 'lm', ts: now, lm: lm ? lm.map((p) => [+p.x.toFixed(4), +(p.y * ar).toFixed(4), +((p.visibility || 0).toFixed(3))]) : null });
   }
 
   window.hagoStart = async () => {

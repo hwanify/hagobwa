@@ -4,6 +4,7 @@ import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-nati
 
 import { T } from '@/components/ui';
 import { HINT_TEXT, RepCounter, type Landmark } from '@/core/repCounter';
+import { tapFeedback } from '@/platform/feedback';
 import { colors, font } from '@/theme';
 
 import { POSE_HTML } from './pose-html';
@@ -36,6 +37,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
   const readyRef = useRef(false);
   const pendingStartRef = useRef(false);
   const lastUiRef = useRef(0);
+  const setReadyRef = useRef(false);
   const [status, setStatus] = useState<Status>('idle');
   const [hint, setHint] = useState('');
   const [angle, setAngle] = useState<number | null>(null);
@@ -64,6 +66,8 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
       }
     }
     counterRef.current.reset();
+    setReadyRef.current = false;
+    inject('window.hagoSetReady && window.hagoSetReady(false)');
     setStatus('loading');
     setHint('카메라와 자세 인식 모델을 불러오는 중');
     if (readyRef.current) inject('window.hagoStart()');
@@ -117,8 +121,15 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
         );
         return;
       case 'lm': {
+        // Squats always count; push-ups wait for the start position (see RepCounter).
         const lm: Landmark[] | undefined = msg.lm?.map(([x, y, visibility]) => ({ x, y, visibility }));
         const u = counterRef.current.update(lm, msg.ts);
+        if (u.ready !== setReadyRef.current) {
+          // Counting starts (or pauses): the lines turn red (or white), and a tap says "go".
+          setReadyRef.current = u.ready;
+          webRef.current?.injectJavaScript(`window.hagoSetReady && window.hagoSetReady(${u.ready});true;`);
+          if (u.ready) tapFeedback();
+        }
         if (u.repCompleted) {
           onRepRef.current();
           webRef.current?.injectJavaScript('window.hagoFlash && window.hagoFlash();true;');
@@ -154,7 +165,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
           <Pressable accessibilityRole="button" onPress={start} disabled={status === 'loading'} style={styles.startBtn}>
             <T style={styles.startText}>{status === 'loading' ? '준비 중...' : '카메라로 세기'}</T>
           </Pressable>
-          <T style={styles.overlayNote}>{hint || '폰을 머리 앞 바닥에 두고 얼굴과 양쪽 어깨가 보이게 해주세요 (옆에서 찍을 땐 팔 전체가 보이게). 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
+          <T style={styles.overlayNote}>{hint || '폰을 손 앞 바닥에 세워 두고, 엎드렸을 때 머리와 양손이 다 보이게 해주세요 (옆에서 찍어도 돼요). 팔을 펴고 잠깐 멈추면 세기 시작해요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
         </View>
       ) : (
         <View style={styles.bar}>

@@ -91,7 +91,9 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
         lastDetect = now;
         lastVideoTime = video.currentTime;
         const lm = landmarker.detectForVideo(video, now).landmarks[0];
-        const u = counterRef.current.update(lm, now);
+        // Same units as the phone page: y over the frame width, so geometry isn't squashed.
+        const ar = video.videoHeight / (video.videoWidth || 1);
+        const u = counterRef.current.update(lm?.map((p) => ({ ...p, y: p.y * ar })), now);
         if (u.repCompleted) {
           onRepRef.current();
           flashUntil = now + 260;
