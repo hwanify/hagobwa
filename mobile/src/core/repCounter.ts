@@ -517,9 +517,13 @@ interface SetRules {
   plantedTol: Record<'front' | 'side', number>;
   /** Shown while waiting for the start position. */
   readyHint: Hint;
+  /** A state change must hold for this many frames in a row (squats are slower and stay at the bottom longer). */
+  confirmFrames: number;
   /**
-   * Measure the gap against the body size at the start of the set (updated only while at the
-   * top) instead of each frame's: in a squat the shoulders lean toward the phone at the bottom.
+   * Measure the gap against the body size while standing (the set's reference) whenever the
+   * body looks bigger than that: in a squat the shoulders lean toward the phone at the bottom,
+   * which would make every squat look deeper. When the body looks smaller (stepped back from
+   * the phone), go by this frame's size, or walking away would look like squatting.
    */
   fixedScale: boolean;
 }
@@ -534,6 +538,7 @@ const RULES: Record<ExerciseId, SetRules> = {
     retopFrac: 0.6,
     plantedTol: { front: 0.5, side: 0.4 },
     readyHint: 'get-ready',
+    confirmFrames: CONFIRM_FRAMES,
     fixedScale: false,
   },
   squat: {
@@ -544,6 +549,7 @@ const RULES: Record<ExerciseId, SetRules> = {
     retopFrac: 0.8,
     plantedTol: { front: 0.6, side: 0.5 },
     readyHint: 'stand-ready',
+    confirmFrames: 3,
     fixedScale: true,
   },
 };
@@ -683,7 +689,7 @@ export class RepCounter {
     }
     this.pendingFrames = next === this.pending ? this.pendingFrames + 1 : 1;
     this.pending = next;
-    if (this.pendingFrames < CONFIRM_FRAMES) return false;
+    if (this.pendingFrames < RULES[this.exercise].confirmFrames) return false;
     const from = this.state;
     this.state = next;
     this.pending = null;
@@ -775,8 +781,8 @@ export class RepCounter {
 
     const dt = this.lastT === null ? 0 : Math.max(0, (nowMs - this.lastT) / 1000);
     this.lastT = nowMs;
-    // fixedScale: the gap against the set's body size (before a set starts, this frame's).
-    const toRef = rules.fixedScale && this.ready ? scale / this.refScale : 1;
+    // fixedScale: never measure against a bigger body than the set's standing size (see SetRules).
+    const toRef = rules.fixedScale && this.ready ? Math.max(1, scale / this.refScale) : 1;
     const gap = byGap ? this.gapFilter.filter(this.gapMedian.push(this.sidesGap(m) * toRef), nowMs) : 0;
     if (byGap) {
       // Only start-position frames: getting into position (kneeling, body still high) would inflate it.
@@ -827,11 +833,15 @@ export class RepCounter {
     let progress: number;
     if (byGap) {
       // Straighter arms / taller standing than at the start raise the top, gently and capped
-      // (frames are already spike-filtered), so one bad frame can't.
-      if (gap > this.top) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
+      // (frames are already spike-filtered), so one bad frame can't. Not while a squatter looks
+      // bigger than the reference (coming closer): that gap shrinks back once it catches up.
+      const growing = rules.fixedScale && scale > this.refScale * 1.1;
+      if (gap > this.top && !growing) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
       const frac = gap / this.top;
-      // fixedScale: follow a slowly zooming camera, but only while at the top (no squat lean).
-      if (rules.fixedScale && frac >= 0.9 && Math.abs(scale / this.refScale - 1) < 0.25) this.refScale += (scale - this.refScale) * k;
+      // fixedScale: the reference follows the standing body size (closer/farther from the phone),
+      // only while standing so the squat lean never feeds into it. Wild frames are ignored.
+      const ratio = scale / this.refScale;
+      if (rules.fixedScale && frac >= 0.9 && ratio > 0.5 && ratio < 2) this.refScale += (scale - this.refScale) * k;
       progress = rules.progress(frac);
     } else {
       progress = sideProgress ?? 1;
