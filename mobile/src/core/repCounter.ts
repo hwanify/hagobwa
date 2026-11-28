@@ -157,6 +157,12 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
 
   if (view === 'front') return frontSquat(lm, true) ?? { angle: null, depth: null, valid: false, hint: 'show-legs', view: 'front' };
   const front = view === 'side' ? null : frontSquat(lm);
+  // Facing the phone at an angle with the far foot hidden: go by the visible leg, as from the
+  // side (it's measured against the standing leg length, so the angle doesn't matter).
+  if (front?.valid && Object.keys(front.planted ?? {}).length < 2) {
+    const one = sideSquat(lm, side ?? bestSide(lm, exercise));
+    if (one.valid) return one;
+  }
   return front ?? sideSquat(lm, side ?? bestSide(lm, exercise));
 }
 
@@ -460,24 +466,24 @@ interface Hold {
   last: Partial<Record<Side, Point>>;
   /** How many frames read as each camera view: the set takes the majority. */
   views: Record<'front' | 'side', number>;
-  /** Latest body scale per view. */
-  scale: Partial<Record<'front' | 'side', number>>;
+  /** Body scale of the recent hold frames, per view (the set uses the median). */
+  scales: Record<'front' | 'side', number[]>;
   /** Frames in a row that broke the hold (not in position / moved); a few are forgiven. */
   misses: number;
 }
 
-/** Median of the last 3 values: drops single-frame spikes before smoothing. */
+/** Median of the last n values (default 3): drops spikes up to (n-1)/2 frames long before smoothing. */
 class Median3 {
   private v: number[] = [];
+  constructor(private n = 3) {}
   reset(): void {
     this.v = [];
   }
   push(x: number): number {
     this.v.push(x);
-    if (this.v.length > 3) this.v.shift();
-    if (this.v.length < 3) return x;
-    const [a, b, c] = this.v;
-    return Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+    if (this.v.length > this.n) this.v.shift();
+    if (this.v.length < this.n) return x;
+    return [...this.v].sort((a, b) => a - b)[(this.n - 1) >> 1];
   }
 }
 
@@ -495,8 +501,19 @@ const HOLD_GAP_MS = 300;
 const ANCHOR_TAU = 1;
 /** Push-up: upright (standing/sitting) this many frames in a row ends the set. */
 const UPRIGHT_FRAMES = 8;
+/** Left and right gaps (x scale) this far apart, beyond their usual difference: one is a glitch. */
+const SIDES_DISAGREE = 0.35;
 /** A new set takes its top from this much recent history (it may start mid-rep). */
 const RECENT_MS = 1500;
+/** settleTop: the gap is smoothed this much (s) before it may raise the top. */
+const TOP_SMOOTH_TAU = 0.3;
+/** settleTop: standing still this long (gap within STILL_RANGE of the top) sets the top there. */
+const STILL_MS = 600;
+const STILL_RANGE = 0.04;
+/** settleTop: ... at this pace (s). */
+const TOP_TAU = 0.5;
+/** fixedScale: this frame's body size is smoothed this much (s) before it's compared. */
+const SCALE_TAU = 0.25;
 
 /** What differs between push-ups and squats; the set logic is shared. */
 interface SetRules {
@@ -520,12 +537,28 @@ interface SetRules {
   /** A state change must hold for this many frames in a row (squats are slower and stay at the bottom longer). */
   confirmFrames: number;
   /**
-   * Measure the gap against the body size while standing (the set's reference) whenever the
-   * body looks bigger than that: in a squat the shoulders lean toward the phone at the bottom,
-   * which would make every squat look deeper. When the body looks smaller (stepped back from
-   * the phone), go by this frame's size, or walking away would look like squatting.
+   * Gap spikes up to this many frames long are dropped (median filter). A glitchy joint comes
+   * out of the camera page's smoothing as a 2-3 frame bump; squats from the side have no second
+   * leg to cross-check against (see sidesGap), and are slow enough for the extra frame of delay.
+   */
+  spikeFrames: number;
+  /**
+   * Measure the gap against the body size while standing (the set's reference), not this
+   * frame's. From the front the scale is the shoulders, which lean toward the phone at the
+   * bottom and look wider: that would make every squat look shallower. When they look narrower
+   * than standing the person stepped back, so that frame's size is used, or walking away from
+   * the phone would look like squatting. From the side the scale is the leg, which looks
+   * shorter at the bottom when the camera is at an angle (the thigh points at it), so it's
+   * always the standing length; walking there moves the feet, which ends the set anyway.
    */
   fixedScale: boolean;
+  /**
+   * The top is the standing height: it rises only with the smoothed gap (noise can't creep it
+   * up), and settles to wherever the person stands still near the top. A top that only rises
+   * creeps up with noise; for squats, whose top is reached at 90%, that would make the last rep
+   * never finish and half squats look deep.
+   */
+  settleTop: boolean;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -539,7 +572,9 @@ const RULES: Record<ExerciseId, SetRules> = {
     plantedTol: { front: 0.5, side: 0.4 },
     readyHint: 'get-ready',
     confirmFrames: CONFIRM_FRAMES,
+    spikeFrames: 1,
     fixedScale: false,
+    settleTop: false,
   },
   squat: {
     extended: { front: 1.2, side: 0.8 },
@@ -550,7 +585,9 @@ const RULES: Record<ExerciseId, SetRules> = {
     plantedTol: { front: 0.6, side: 0.5 },
     readyHint: 'stand-ready',
     confirmFrames: 3,
+    spikeFrames: 2,
     fixedScale: true,
+    settleTop: true,
   },
 };
 
@@ -574,13 +611,17 @@ export class RepCounter {
   private lastT: number | null = null;
   private angleFilter = new OneEuro(1.2, 0.02);
   private depthFilter = new OneEuro(1.2, 1.5);
-  private gapFilter = new OneEuro(1.5, 2);
-  private gapMedian = new Median3();
+  /** Per camera view: before a set starts, frames may read as either (different units). */
+  private gapFilter = { front: new OneEuro(1.5, 2), side: new OneEuro(1.5, 2) };
+  private gapMedian = { front: new Median3(), side: new Median3() };
+  /** fixedScale exercises: body size with single-frame glitches dropped (a bad knee doubles a leg). */
+  private scaleMedian = new Median3(5);
   /** Spike-free copies of the angle and depth for learning the range (progress uses the unclipped values). */
   private angleMedian = new Median3();
   private depthMedian = new Median3();
   /** Left minus right gap while both sides show, to keep the gap steady when one drops out. */
   private gapSkew = 0;
+  private lastSidesGap: number | null = null;
   private angleRange: AdaptiveRange;
   private depthRange = new AdaptiveRange({ top: 1, bottom: 0.5 }, MIN_DEPTH_RANGE);
   private depthSpan = { min: Infinity, max: -Infinity };
@@ -594,20 +635,26 @@ export class RepCounter {
   private anchorScale = 1;
   /** fixedScale exercises: body size the gap is measured against (from the top of the set). */
   private refScale = 1;
+  /** fixedScale exercises: this frame's body size, smoothed. */
+  private scaleNow = 1;
   private top = 1;
   private topCap = 1;
+  /** settleTop: smoothed gap, and the last moments of it to tell standing still. */
+  private topSmooth = 1;
+  private still: { t: number; v: number }[] = [];
   private lostSince: number | null = null;
   private drift: boolean[] = [];
   private lastProgress: number | null = null;
   private lastUsableAt = -Infinity;
   private uprightFrames = 0;
   /** Start-position gaps of the last moments (kept across holds): the top of a new set comes from here. */
-  private recentGaps: { t: number; v: number }[] = [];
+  private recentGaps: { t: number; v: number; view: 'front' | 'side' }[] = [];
   /** Highest gap since the last bottom. */
   private peakSinceBottom = 0;
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
+    this.resetTracking();
   }
 
   get reps(): number {
@@ -633,11 +680,16 @@ export class RepCounter {
     this.lastT = null;
     this.angleFilter.reset();
     this.depthFilter.reset();
-    this.gapFilter.reset();
-    this.gapMedian.reset();
+    const n = 2 * RULES[this.exercise].spikeFrames + 1;
+    for (const v of ['front', 'side'] as const) {
+      this.gapFilter[v].reset();
+      this.gapMedian[v] = new Median3(n);
+    }
+    this.scaleMedian.reset();
     this.angleMedian.reset();
     this.depthMedian.reset();
     this.gapSkew = 0;
+    this.lastSidesGap = null;
     this.angleRange.reset();
     this.depthRange.reset();
     this.depthSpan = { min: Infinity, max: -Infinity };
@@ -652,6 +704,7 @@ export class RepCounter {
     this.uprightFrames = 0;
     this.recentGaps = [];
     this.peakSinceBottom = 0;
+    this.still = [];
   }
 
   /** Stop counting until the person gets into position again. Keeps the count. */
@@ -731,13 +784,22 @@ export class RepCounter {
   private sidesGap(m: Measurement): number {
     const l = m.gaps?.left;
     const r = m.gaps?.right;
+    let gap = m.depth ?? 0;
     if (l !== undefined && r !== undefined) {
-      this.gapSkew += (l - r - this.gapSkew) * 0.2;
-      return (l + r) / 2;
-    }
-    if (l !== undefined) return l - this.gapSkew / 2;
-    if (r !== undefined) return r + this.gapSkew / 2;
-    return m.depth ?? 0;
+      const fromL = l - this.gapSkew / 2;
+      const fromR = r + this.gapSkew / 2;
+      if (this.lastSidesGap !== null && Math.abs(fromL - fromR) > SIDES_DISAGREE) {
+        // Both sides move together; one jumping away from the other is a glitchy joint (it
+        // would leak through the smoothing as a fake dip). Keep the side that stayed put.
+        gap = Math.abs(fromL - this.lastSidesGap) <= Math.abs(fromR - this.lastSidesGap) ? fromL : fromR;
+      } else {
+        this.gapSkew += (l - r - this.gapSkew) * 0.2;
+        gap = (l + r) / 2;
+      }
+    } else if (l !== undefined) gap = l - this.gapSkew / 2;
+    else if (r !== undefined) gap = r + this.gapSkew / 2;
+    this.lastSidesGap = gap;
+    return gap;
   }
 
   update(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
@@ -781,12 +843,18 @@ export class RepCounter {
 
     const dt = this.lastT === null ? 0 : Math.max(0, (nowMs - this.lastT) / 1000);
     this.lastT = nowMs;
-    // fixedScale: never measure against a bigger body than the set's standing size (see SetRules).
-    const toRef = rules.fixedScale && this.ready ? Math.max(1, scale / this.refScale) : 1;
-    const gap = byGap ? this.gapFilter.filter(this.gapMedian.push(this.sidesGap(m) * toRef), nowMs) : 0;
+    // fixedScale: measure against the set's standing size (see SetRules).
+    // Body size for comparing against the standing size: one glitchy joint mustn't move it.
+    const size = rules.fixedScale ? this.scaleMedian.push(scale) : scale;
+    let toRef = 1;
+    if (rules.fixedScale && this.ready) {
+      this.scaleNow += (size - this.scaleNow) * (1 - Math.exp(-dt / SCALE_TAU));
+      toRef = scale / (view === 'side' ? this.refScale : Math.min(this.scaleNow, this.refScale));
+    }
+    const gap = byGap ? this.gapFilter[view].filter(this.gapMedian[view].push(this.sidesGap(m) * toRef), nowMs) : 0;
     if (byGap) {
       // Only start-position frames: getting into position (kneeling, body still high) would inflate it.
-      if (m.startPose) this.recentGaps.push({ t: nowMs, v: gap });
+      if (m.startPose) this.recentGaps.push({ t: nowMs, v: gap, view });
       while (this.recentGaps.length && this.recentGaps[0].t < nowMs - RECENT_MS) this.recentGaps.shift();
     }
     const sideProgress = byGap ? null : this.angleProgress(m, nowMs, dt);
@@ -835,13 +903,27 @@ export class RepCounter {
       // Straighter arms / taller standing than at the start raise the top, gently and capped
       // (frames are already spike-filtered), so one bad frame can't. Not while a squatter looks
       // bigger than the reference (coming closer): that gap shrinks back once it catches up.
-      const growing = rules.fixedScale && scale > this.refScale * 1.1;
-      if (gap > this.top && !growing) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
+      const growing = rules.fixedScale && size > this.refScale * 1.1;
+      if (rules.settleTop) {
+        this.topSmooth += (gap - this.topSmooth) * (1 - Math.exp(-dt / TOP_SMOOTH_TAU));
+        if (this.topSmooth > this.top && !growing) this.top = Math.min(this.topCap, this.top + (this.topSmooth - this.top) * 0.2);
+        // Standing still near the top (also after coming up not quite all the way): that's the
+        // standing height now. Moving frames don't count, so going straight into the next rep
+        // can't drag it down.
+        this.still.push({ t: nowMs, v: gap });
+        while (this.still.length > 1 && this.still[1].t <= nowMs - STILL_MS) this.still.shift();
+        const vs = this.still.map((x) => x.v);
+        const level = vs.reduce((a, b) => a + b, 0) / vs.length;
+        const isStill = this.still[0].t <= nowMs - STILL_MS && Math.max(...vs) - Math.min(...vs) < STILL_RANGE * this.top;
+        if (isStill && level >= 0.8 * this.top && (this.state === 'up' || this.state === 'goingUp') && !growing) {
+          this.top = Math.min(this.topCap, this.top + (level - this.top) * (1 - Math.exp(-dt / TOP_TAU)));
+        }
+      } else if (gap > this.top && !growing) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
       const frac = gap / this.top;
       // fixedScale: the reference follows the standing body size (closer/farther from the phone),
       // only while standing so the squat lean never feeds into it. Wild frames are ignored.
-      const ratio = scale / this.refScale;
-      if (rules.fixedScale && frac >= 0.9 && ratio > 0.5 && ratio < 2) this.refScale += (scale - this.refScale) * k;
+      const ratio = size / this.refScale;
+      if (rules.fixedScale && frac >= 0.9 && ratio > 0.5 && ratio < 2) this.refScale += (size - this.refScale) * k;
       progress = rules.progress(frac);
     } else {
       progress = sideProgress ?? 1;
@@ -878,7 +960,14 @@ export class RepCounter {
     const h = this.hold;
     if (!h || (!inPose && ++h.misses > HOLD_MISSES)) {
       this.hold = inPose
-        ? { start: nowMs, planted, last: { ...planted }, views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
+        ? {
+            start: nowMs,
+            planted,
+            last: { ...planted },
+            views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 },
+            scales: { front: view === 'front' ? [scale] : [], side: view === 'side' ? [scale] : [] },
+            misses: 0,
+          }
         : null;
       return;
     }
@@ -889,14 +978,15 @@ export class RepCounter {
     }
     h.misses = 0;
     h.views[view]++;
-    h.scale[view] = scale;
+    h.scales[view].push(scale);
+    if (h.scales[view].length > 20) h.scales[view].shift();
     Object.assign(h.last, planted);
     if (nowMs - h.start < READY_MS) return;
     const setView = h.views.front >= h.views.side ? 'front' : 'side';
     const byGap = this.exercise === 'squat' || setView === 'front';
     // Top of the set: 90th percentile of the last 1.5 s, so the set can start mid-rep, while a
     // glitchy frame or two can't set it.
-    const sorted = this.recentGaps.map((x) => x.v).sort((a, b) => a - b);
+    const sorted = this.recentGaps.filter((x) => x.view === setView).map((x) => x.v).sort((a, b) => a - b);
     const top = sorted.length ? sorted[Math.floor(0.9 * (sorted.length - 1))] : 0;
     // The arms/legs must have been straight just now, so the top is a real top.
     if (byGap && top < rules.extended[setView]) return;
@@ -904,9 +994,13 @@ export class RepCounter {
     this.hold = null;
     this.setView = setView;
     this.anchor = h.last;
-    this.anchorScale = h.scale[setView] ?? scale;
+    const scales = [...h.scales[setView]].sort((a, b) => a - b);
+    this.anchorScale = scales.length ? scales[Math.floor(scales.length / 2)] : scale;
     this.refScale = this.anchorScale;
+    this.scaleNow = this.anchorScale;
     this.top = byGap ? top : 1;
+    this.topSmooth = this.top;
+    this.still = [];
     // If the set started mid-rep the top is underestimated: let it grow to the real one.
     this.topCap = this.top * 1.6;
     if (!byGap) {
