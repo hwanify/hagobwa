@@ -1,9 +1,11 @@
 name: pose-fixtures
 # Rebuilds the real-footage pose test data (see tools/pose-fixtures) and commits it.
+# Run it by hand (Actions > pose-fixtures) after adding clips to clips.json; expected counts in
+# clips.json are read by the tests directly and need no re-recording.
 on:
   workflow_dispatch:
   push:
-    paths: ['tools/pose-fixtures/**']
+    paths: ['tools/pose-fixtures/extract.mjs']
 permissions:
   contents: write
 jobs:
