@@ -5,14 +5,16 @@ import { describe, expect, it } from 'vitest';
 
 import { STEADY_JS } from '../../features/pose/pose-html';
 import { RepCounter, type Landmark } from '../repCounter';
+import type { ExerciseId } from '../rates';
 
 /**
- * Real footage: MediaPipe landmarks (same model as the app) recorded from free push-up clips
- * with known rep counts, replayed through exactly what the phone runs: the camera page's joint
- * smoothing, the same units, then RepCounter. Built by tools/pose-fixtures.
+ * Real footage: MediaPipe landmarks (same model as the app) recorded from free push-up and squat
+ * clips with known rep counts, replayed through exactly what the phone runs: the camera page's
+ * joint smoothing, the same units, then RepCounter. Built by tools/pose-fixtures.
  */
 interface Clip {
   id: number;
+  exercise?: ExerciseId;
   view: string;
   min: number;
   max: number;
@@ -34,11 +36,11 @@ const clips: Clip[] = fs.existsSync(file)
   ? (JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString()).clips as Clip[]).map((c) => ({ ...c, ...spec[c.id] }))
   : [];
 
-function replay(clip: Clip): number {
+function replay(clip: Clip, exercise: ExerciseId): number {
   const page = new Function(`${STEADY_JS}; return { steady, reset: () => { F.length = 0; } };`)() as {
     steady: (lm: Landmark[] | null, now: number) => Landmark[] | null;
   };
-  const counter = new RepCounter('pushup');
+  const counter = new RepCounter(exercise);
   const ar = clip.h / clip.w;
   clip.frames.forEach((f, i) => {
     const t = Math.round((i * 1000) / clip.fps);
@@ -54,12 +56,20 @@ function replay(clip: Clip): number {
   return counter.reps;
 }
 
-describe.skipIf(clips.length === 0)('real push-up footage', () => {
+describe.skipIf(clips.length === 0)('real footage', () => {
   for (const clip of clips) {
-    it(`${clip.id} (${clip.view}): ${clip.min === clip.max ? clip.min : `${clip.min}-${clip.max}`} reps${clip.note ? `, ${clip.note}` : ''}`, () => {
-      const reps = replay(clip);
+    const exercise = clip.exercise ?? 'pushup';
+    it(`${exercise} ${clip.id} (${clip.view}): ${clip.min === clip.max ? clip.min : `${clip.min}-${clip.max}`} reps${clip.note ? `, ${clip.note}` : ''}`, () => {
+      const reps = replay(clip, exercise);
       expect(reps).toBeGreaterThanOrEqual(clip.min);
       expect(reps).toBeLessThanOrEqual(clip.max);
     });
+    // Counting the wrong exercise finds nothing: a squat is no push-up and the other way round.
+    if (clip.min > 0) {
+      const other: ExerciseId = exercise === 'pushup' ? 'squat' : 'pushup';
+      it(`${other} mode on ${exercise} ${clip.id}: 0 reps`, () => {
+        expect(replay(clip, other)).toBe(0);
+      });
+    }
   }
 });

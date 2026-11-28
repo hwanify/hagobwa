@@ -106,8 +106,16 @@ export const POSE_HTML = `<!doctype html>
     const lo = Math.min(lm[11].x, lm[12].x), hi = Math.max(lm[11].x, lm[12].x), inset = 0.15 * (hi - lo);
     const faceOn = vis(0) >= 0.5 && lm[0].x > lo + inset && lm[0].x < hi - inset;
     const front = exercise === 'pushup' && ok(11) && ok(12) && (faceOn || d(11, 12) >= 0.7 * Math.max(d(11, 13), d(12, 14)));
-    // From the front reps are counted on the shoulders, so they glow too; arms only when clearly seen.
-    const limbs = front ? [[11, 12], sides.left, sides.right] : [sideScore(sides.left) >= sideScore(sides.right) ? sides.left : sides.right];
+    // Squats facing the phone: shoulders wide next to the torso, or hips wide next to the thighs.
+    const mid = (a, b) => [(lm[a].x + lm[b].x) / 2 * c.width, (lm[a].y + lm[b].y) / 2 * c.height];
+    const torso = ok(11) && ok(12) ? Math.hypot(mid(11, 12)[0] - mid(23, 24)[0], mid(11, 12)[1] - mid(23, 24)[1]) : 0;
+    const thigh = Math.max(ok(25) ? d(23, 25) : 0, ok(26) ? d(24, 26) : 0);
+    const squatFront = exercise === 'squat' && ok(23) && ok(24) && ((torso > 0 && d(11, 12) >= 0.45 * torso) || (thigh > 0 && d(23, 24) >= 0.45 * thigh));
+    // From the front reps are counted on the shoulders (push-ups) or hips (squats), so they glow
+    // too; arms/legs only when clearly seen.
+    const limbs = front ? [[11, 12], sides.left, sides.right]
+      : squatFront ? [[23, 24], sides.left, sides.right]
+      : [sideScore(sides.left) >= sideScore(sides.right) ? sides.left : sides.right];
     const inLimb = (a, b) => limbs.some((l) => l.includes(a) && l.includes(b));
     // A limb appears once clearly seen and stays until clearly lost, so it doesn't flicker.
     const shown = (limb) => {

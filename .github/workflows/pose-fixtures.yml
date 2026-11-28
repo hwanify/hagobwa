@@ -1,11 +1,18 @@
 name: pose-fixtures
-# Rebuilds the real-footage pose test data (see tools/pose-fixtures) and commits it.
-# Run it by hand (Actions > pose-fixtures) after adding clips to clips.json; expected counts in
-# clips.json are read by the tests directly and need no re-recording.
+# Records pose test data for clips added to tools/pose-fixtures/clips.json and commits it.
+# Clips already recorded are kept (run by hand with FORCE to redo all). Expected counts in
+# clips.json are read by the tests directly and need no re-recording. Not on main: the data
+# reaches main with the branch that added the clips.
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Re-record every clip'
+        type: boolean
+        default: false
   push:
-    paths: ['tools/pose-fixtures/extract.mjs']
+    branches-ignore: [main]
+    paths: ['tools/pose-fixtures/extract.mjs', 'tools/pose-fixtures/clips.json']
 permissions:
   contents: write
 jobs:
@@ -24,13 +31,15 @@ jobs:
         run: npm install --no-save --no-package-lock playwright@1.49.1 && npx playwright install --with-deps chromium
       - name: Extract landmarks
         working-directory: tools/pose-fixtures
+        env:
+          FORCE: ${{ inputs.force && '1' || '' }}
         run: node extract.mjs
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add mobile/src/core/__tests__/fixtures/pose-clips.json.gz
-          git commit -m "Pose test data from free push-up clips" || exit 0
+          git commit -m "Pose test data from free workout clips" || exit 0
           # The branch may have moved while this ran: put the data on top of it.
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"

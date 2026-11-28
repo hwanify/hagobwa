@@ -198,7 +198,10 @@ function draw(
   // From in front of the head both arms are in view: light up both.
   const d = (a: number, b: number) => Math.hypot((lm[a].x - lm[b].x) * W, (lm[a].y - lm[b].y) * H);
   const front = exercise === 'pushup' && ok(11) && ok(12) && d(11, 12) >= 0.7 * Math.max(d(11, 13), d(12, 14));
-  const limbs = front ? [sides.left, sides.right] : [score(sides.left) >= score(sides.right) ? sides.left : sides.right];
+  // Squats facing the camera: hips wide next to the thighs (both legs in view).
+  const thigh = Math.max(ok(25) ? d(23, 25) : 0, ok(26) ? d(24, 26) : 0);
+  const squatFront = exercise === 'squat' && ok(23) && ok(24) && thigh > 0 && d(23, 24) >= 0.45 * thigh;
+  const limbs = front || squatFront ? [sides.left, sides.right] : [score(sides.left) >= score(sides.right) ? sides.left : sides.right];
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.shadowBlur = 0;

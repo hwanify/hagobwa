@@ -1,6 +1,7 @@
 // Builds mobile/src/core/__tests__/fixtures/pose-clips.json.gz: MediaPipe pose landmarks (the
-// same model and settings as the app, 18 frames/s) for free push-up clips with known rep counts.
+// same model and settings as the app, 18 frames/s) for free workout clips with known rep counts.
 // Run by .github/workflows/pose-fixtures.yml. Needs ffmpeg, Playwright Chromium and internet.
+// Clips already in the file are kept as they are; only new ones are recorded (FORCE=1 redoes all).
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -37,19 +38,38 @@ window.extract = async (dir, n, fps) => {
 window.ready = true;
 </script></body></html>`;
 
-fs.mkdirSync(work, { recursive: true });
-fs.writeFileSync(path.join(work, 'page.html'), PAGE);
-const browser = await chromium.launch();
-const page = await browser.newPage();
-await page.route('http://local.test/**', (route) => {
-  const f = route.request().url().replace('http://local.test/', '');
-  route.fulfill({ path: path.join(work, f), contentType: f.endsWith('.jpg') ? 'image/jpeg' : 'text/html' });
-});
-await page.goto('http://local.test/page.html');
-await page.waitForFunction('window.ready === true');
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const recorded = new Map(
+  (!process.env.FORCE && fs.existsSync(out) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(out)).toString()).clips : [])
+    .filter((c) => c.fps === FPS && same(c.keep, KEEP))
+    .map((c) => [c.id, c]),
+);
+
+let page = null;
+let browser = null;
+async function openPage() {
+  fs.mkdirSync(work, { recursive: true });
+  fs.writeFileSync(path.join(work, 'page.html'), PAGE);
+  browser = await chromium.launch();
+  page = await browser.newPage();
+  await page.route('http://local.test/**', (route) => {
+    const f = route.request().url().replace('http://local.test/', '');
+    route.fulfill({ path: path.join(work, f), contentType: f.endsWith('.jpg') ? 'image/jpeg' : 'text/html' });
+  });
+  await page.goto('http://local.test/page.html');
+  await page.waitForFunction('window.ready === true');
+}
 
 const clips = [];
+let added = 0;
 for (const c of spec.clips) {
+  const old = recorded.get(c.id);
+  if (old) {
+    clips.push({ ...c, url: `https://mixkit.co/free-stock-video/${c.id}/`, w: old.w, h: old.h, fps: FPS, keep: KEEP, frames: old.frames });
+    continue;
+  }
+  if (!page) await openPage();
+  added++;
   const video = path.join(work, `v${c.id}.mp4`);
   if (!fs.existsSync(video)) execSync(`curl -sfL -o ${video} https://assets.mixkit.co/videos/${c.id}/${c.id}-360.mp4`);
   const dir = `f${c.id}`;
@@ -62,7 +82,8 @@ for (const c of spec.clips) {
   clips.push({ ...c, url: `https://mixkit.co/free-stock-video/${c.id}/`, w: r.w, h: r.h, fps: FPS, keep: KEEP, frames });
   console.log(c.id, n, 'frames', r.frames.filter(Boolean).length, 'with a body');
 }
-await browser.close();
+if (browser) await browser.close();
+console.log(added, 'clips recorded,', clips.length - added, 'kept');
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, zlib.gzipSync(JSON.stringify({ source: spec.source, clips }), { level: 9 }));
 console.log('wrote', out, fs.statSync(out).size, 'bytes');

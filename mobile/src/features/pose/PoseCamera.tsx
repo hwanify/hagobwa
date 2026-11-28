@@ -12,6 +12,13 @@ import type { CameraStatus, PoseCameraProps } from './types';
 
 type Status = CameraStatus;
 
+const GUIDE: Record<PoseCameraProps['exercise'], string> = {
+  pushup:
+    '폰을 손 앞 바닥에 세워 두고, 엎드렸을 때 머리와 양손이 다 보이게 해주세요 (옆에서 찍어도 돼요). 팔을 펴고 잠깐 멈추면 세기 시작해요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.',
+  squat:
+    '폰을 두세 걸음 앞에 세워 두고, 머리부터 발끝까지 다 보이게 서 주세요 (옆이나 비스듬히 찍어도 돼요). 바로 서서 잠깐 멈추면 세기 시작해요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.',
+};
+
 // react-native-webview's class typings resolve to `never` props under React 19 types; give it explicit ones.
 const CameraWebView = WebView as unknown as ComponentType<WebViewProps & { ref?: Ref<WebView> }>;
 
@@ -121,7 +128,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
         );
         return;
       case 'lm': {
-        // Squats always count; push-ups wait for the start position (see RepCounter).
+        // Counting waits for the start position (plank / standing), see RepCounter.
         const lm: Landmark[] | undefined = msg.lm?.map(([x, y, visibility]) => ({ x, y, visibility }));
         const u = counterRef.current.update(lm, msg.ts);
         if (u.ready !== setReadyRef.current) {
@@ -165,7 +172,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
           <Pressable accessibilityRole="button" onPress={start} disabled={status === 'loading'} style={styles.startBtn}>
             <T style={styles.startText}>{status === 'loading' ? '준비 중...' : '카메라로 세기'}</T>
           </Pressable>
-          <T style={styles.overlayNote}>{hint || '폰을 손 앞 바닥에 세워 두고, 엎드렸을 때 머리와 양손이 다 보이게 해주세요 (옆에서 찍어도 돼요). 팔을 펴고 잠깐 멈추면 세기 시작해요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
+          <T style={styles.overlayNote}>{hint || GUIDE[exercise]}</T>
         </View>
       ) : (
         <View style={styles.bar}>
