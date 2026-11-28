@@ -50,6 +50,10 @@ export const DEFAULT_RANGE: Record<ExerciseId, { top: number; bottom: number }> 
 /** Smallest range we accept, so standing still can never look like a rep. */
 const MIN_ANGLE_RANGE = 50;
 const MIN_DEPTH_RANGE = 0.25;
+/** Front view: shoulders must grow at least ~13% on screen for a rep. */
+const MIN_FRONT_RANGE = 0.12;
+/** A state change must hold for this many frames in a row (~0.1 s), so one bad frame can't count. */
+const CONFIRM_FRAMES = 2;
 
 /**
  * Progress thresholds with hysteresis. A rep is a full cycle
@@ -132,25 +136,31 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
 
 /** Shoulder width counts as "wide" (camera in front) at this fraction of the upper arm. */
 const FRONT_SHOULDER_RATIO = 0.7;
+const NOSE = 0;
 
 /**
- * Push-up seen from in front of the head. Shoulder width is the ruler here: it stays the
- * same size on screen while the shoulders drop toward the hands. Depth is ~1 at the top and
- * ~0.2 at the bottom. Hips and feet are hidden behind the body from here, so the hip check
- * is skipped.
+ * Push-up seen from in front of the head (phone on the floor under the face).
+ * Arms are mostly out of frame or foreshortened from here, so MediaPipe only guesses them and
+ * they jitter. The shoulders are what it tracks best, and they get bigger on screen as the
+ * body comes down toward the phone: depth is -ln(shoulder width), high at the top and lower
+ * at the bottom. Arms are not needed at all. Hips and feet are hidden, so no hip check.
  */
 function frontPushup(lm: Landmark[]): Measurement | null {
   const L = joints(lm, 'left');
   const R = joints(lm, 'right');
   if (vis(L.s) < VIS || vis(R.s) < VIS) return null;
   const width = dist(L.s, R.s);
+  if (width <= 0) return null;
+  const lo = Math.min(L.s.x, R.s.x);
+  const hi = Math.max(L.s.x, R.s.x);
+  const inset = 0.15 * (hi - lo);
+  const nose = lm[NOSE];
+  // Face between the shoulders = looking at the camera.
+  const faceOn = vis(nose) >= VIS && nose.x > lo + inset && nose.x < hi - inset;
   const upper = Math.max(vis(L.e) >= VIS ? dist(L.s, L.e) : 0, vis(R.e) >= VIS ? dist(R.s, R.e) : 0);
-  if (upper === 0 || width < FRONT_SHOULDER_RATIO * upper) return null;
-  const arms = [L, R].filter((a) => vis(a.e) >= VIS && vis(a.w) >= VIS);
-  if (arms.length === 0) return { angle: null, depth: null, valid: false, hint: 'show-arms', view: 'front' };
-  const angle = arms.reduce((n, a) => n + angleAt(a.s, a.e, a.w), 0) / arms.length;
-  const drop = arms.reduce((n, a) => n + (a.w.y - a.s.y), 0) / arms.length;
-  return { angle, depth: drop / (1.6 * width), valid: true, hint: '', view: 'front' };
+  const wide = upper > 0 && width >= FRONT_SHOULDER_RATIO * upper;
+  if (!faceOn && !wide) return null;
+  return { angle: null, depth: -Math.log(width), valid: true, hint: '', view: 'front' };
 }
 
 /**
@@ -249,9 +259,26 @@ export class AdaptiveRange {
 
 type State = 'up' | 'goingDown' | 'down' | 'goingUp';
 
+/** Where the 4-state machine wants to go for this progress (hysteresis between thresholds). */
+function nextState(state: State, progress: number): State {
+  switch (state) {
+    case 'up':
+      return progress < ENTER_DESCENT ? 'goingDown' : 'up';
+    case 'goingDown':
+      if (progress < REACH_BOTTOM) return 'down';
+      return progress > ABORT_TO_TOP ? 'up' : 'goingDown'; // half rep: back up without a count
+    case 'down':
+      return progress > LEAVE_BOTTOM ? 'goingUp' : 'down';
+    case 'goingUp':
+      if (progress < REACH_BOTTOM) return 'down';
+      return progress > REACH_TOP ? 'up' : 'goingUp';
+  }
+}
+
 /**
  * Counts reps from a stream of pose frames.
- * Signal: smoothed joint angle (plus a depth signal once it shows a real range), mapped to
+ * Signal: smoothed joint angle (plus a depth signal once it shows a real range), or the
+ * shoulder width from the front, mapped to
  * 0..1 progress against the person's own range, then a 4-state machine with hysteresis.
  */
 export class RepCounter {
@@ -266,6 +293,10 @@ export class RepCounter {
   private angleRange: AdaptiveRange;
   private depthRange = new AdaptiveRange({ top: 1, bottom: 0.5 }, MIN_DEPTH_RANGE);
   private depthSpan = { min: Infinity, max: -Infinity };
+  private frontFilter = new OneEuro(1.5, 2);
+  private frontRange = new AdaptiveRange({ top: -Infinity, bottom: Infinity }, MIN_FRONT_RANGE);
+  private pending: State | null = null;
+  private pendingFrames = 0;
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
@@ -297,6 +328,10 @@ export class RepCounter {
     this.angleRange.reset();
     this.depthRange.reset();
     this.depthSpan = { min: Infinity, max: -Infinity };
+    this.frontFilter.reset();
+    this.frontRange.reset();
+    this.pending = null;
+    this.pendingFrames = 0;
   }
 
   /** Keep one body side for the whole set; only switch after it's been gone a while. */
@@ -325,7 +360,12 @@ export class RepCounter {
     let repCompleted = false;
     let progress: number | null = null;
 
-    if (m.angle !== null) {
+    if (m.view === 'front' && m.depth !== null) {
+      this.lastT = nowMs;
+      const v = this.frontFilter.filter(m.depth, nowMs);
+      this.frontRange.update(v, nowMs, dt);
+      progress = this.frontRange.progress(v);
+    } else if (m.angle !== null) {
       this.lastT = nowMs;
       const angle = this.angleFilter.filter(m.angle, nowMs);
       this.angleRange.update(angle, nowMs, dt);
@@ -336,10 +376,7 @@ export class RepCounter {
         this.depthRange.update(depth, nowMs, dt);
         this.depthSpan.min = Math.min(this.depthSpan.min, depth);
         this.depthSpan.max = Math.max(this.depthSpan.max, depth);
-        if (m.view === 'front') {
-          // From the front the elbow angle hardly moves: count on the shoulder drop alone.
-          progress = this.depthRange.progress(depth);
-        } else if (this.depthSpan.max - this.depthSpan.min >= MIN_DEPTH_RANGE) {
+        if (this.depthSpan.max - this.depthSpan.min >= MIN_DEPTH_RANGE) {
           // Only trust depth once it has actually moved like a rep; then average both signals.
           progress = (progress + this.depthRange.progress(depth)) / 2;
         }
@@ -347,28 +384,24 @@ export class RepCounter {
     }
 
     if (progress !== null && m.valid) {
-      switch (this.state) {
-        case 'up':
-          if (progress < ENTER_DESCENT) this.state = 'goingDown';
-          break;
-        case 'goingDown':
-          if (progress < REACH_BOTTOM) this.state = 'down';
-          else if (progress > ABORT_TO_TOP) this.state = 'up'; // half rep: no count
-          break;
-        case 'down':
-          if (progress > LEAVE_BOTTOM) this.state = 'goingUp';
-          break;
-        case 'goingUp':
-          if (progress < REACH_BOTTOM) this.state = 'down';
-          else if (progress > REACH_TOP) {
-            this.state = 'up';
-            if (nowMs - this.lastRepAt >= MIN_REP_MS) {
-              this.lastRepAt = nowMs;
-              this.count++;
-              repCompleted = true;
-            }
+      const next = nextState(this.state, progress);
+      if (next === this.state) {
+        this.pending = null;
+        this.pendingFrames = 0;
+      } else {
+        this.pendingFrames = next === this.pending ? this.pendingFrames + 1 : 1;
+        this.pending = next;
+        if (this.pendingFrames >= CONFIRM_FRAMES) {
+          const from = this.state;
+          this.state = next;
+          this.pending = null;
+          this.pendingFrames = 0;
+          if (from === 'goingUp' && next === 'up' && nowMs - this.lastRepAt >= MIN_REP_MS) {
+            this.lastRepAt = nowMs;
+            this.count++;
+            repCompleted = true;
           }
-          break;
+        }
       }
     }
 
@@ -379,7 +412,7 @@ export class RepCounter {
 
 export const HINT_TEXT: Record<Measurement['hint'], string> = {
   '': '',
-  'show-arms': '어깨부터 손목까지 화면에 보이게 해주세요',
+  'show-arms': '얼굴과 양쪽 어깨가 보이게, 옆이라면 팔 전체가 보이게 해주세요',
   'show-legs': '엉덩이부터 발목까지 보이게 물러나 주세요',
   straighten: '허리를 펴고 몸을 일직선으로',
   'no-person': '사람이 안 보여요. 화면에서 조금 떨어져 주세요',

@@ -207,21 +207,26 @@ function squatPose(kneeDeg: number): Landmark[] {
 }
 
 /**
- * Push-up filmed from in front of the head: shoulders wide apart, they drop toward the hands
- * (down = 0 top .. 1 bottom). Elbows stay nearly straight on screen, and the hidden hips/feet
- * land in misleading places, as MediaPipe guesses them.
+ * Push-up filmed from in front of the head (down = 0 top .. 1 bottom): the face is between the
+ * shoulders and the shoulders grow on screen as the body comes down toward the phone.
+ * Arms are barely in frame, so MediaPipe's guesses for them are low-confidence noise
+ * (`armNoise` scatters them), and the hidden hips/feet land in misleading places.
  */
-function frontPushupPose(down: number): Landmark[] {
+function frontPushupPose(down: number, armNoise = 0): Landmark[] {
   const lm = blank();
-  const set = (i: number, x: number, y: number) => (lm[i] = { x, y, visibility: 1 });
-  const sy = 0.3 + 0.26 * down;
-  for (const [s, e, w, h, k, a, x] of [
-    [11, 13, 15, 23, 25, 27, 0.4],
-    [12, 14, 16, 24, 26, 28, 0.6],
+  const set = (i: number, x: number, y: number, v = 1) => (lm[i] = { x, y, visibility: v });
+  const half = 0.1 * (1 + 0.45 * down);
+  const sy = 0.55 + 0.05 * down;
+  set(0, 0.5, sy - 0.12);
+  const jit = () => (Math.random() - 0.5) * armNoise;
+  for (const [s, e, w, h, k, a, dir] of [
+    [11, 13, 15, 23, 25, 27, -1],
+    [12, 14, 16, 24, 26, 28, 1],
   ]) {
+    const x = 0.5 + dir * half;
     set(s, x, sy);
-    set(e, x + (x < 0.5 ? -0.01 : 0.01), (sy + 0.62) / 2);
-    set(w, x, 0.62);
+    set(e, x + dir * 0.03 + jit(), 0.85 + jit(), armNoise ? 0.55 : 1);
+    set(w, x + jit(), 0.98 + jit(), armNoise ? 0.5 : 1);
     set(h, x, sy + 0.05);
     set(k, x, sy + 0.08);
     set(a, x, sy + 0.02);
@@ -230,13 +235,18 @@ function frontPushupPose(down: number): Landmark[] {
 }
 
 describe('pose measurement', () => {
-  it('recognises a front view and measures the shoulder drop', () => {
+  it('recognises a front view and measures how close the shoulders come', () => {
     const top = measure(frontPushupPose(0), 'pushup');
     const bottom = measure(frontPushupPose(1), 'pushup');
     expect(top.view).toBe('front');
     expect(top.valid).toBe(true);
-    expect(top.depth!).toBeGreaterThan(0.9);
-    expect(bottom.depth!).toBeLessThan(0.25);
+    expect(top.depth! - bottom.depth!).toBeGreaterThan(0.3);
+  });
+  it('needs no arms in the front view', () => {
+    const lm = frontPushupPose(0).map((p, i) => ([13, 14, 15, 16].includes(i) ? { ...p, visibility: 0.1 } : p));
+    const m = measure(lm, 'pushup');
+    expect(m.view).toBe('front');
+    expect(m.valid).toBe(true);
   });
   it('keeps the side view for side-on push-ups', () => {
     expect(measure(pushupPose(170), 'pushup').view).not.toBe('front');
@@ -336,6 +346,22 @@ describe('RepCounter', () => {
     keys.push(0);
     play(c, (d) => frontPushupPose(d / 100), keys.map((k) => k * 100), 700);
     expect(c.reps).toBe(5);
+  });
+
+  it('counts front push-ups while the half-visible arms jitter', () => {
+    const c = new RepCounter('pushup');
+    const keys = [0];
+    for (let i = 0; i < 5; i++) keys.push(1, 0);
+    keys.push(0);
+    play(c, (d) => frontPushupPose(d / 100, 0.25), keys.map((k) => k * 100), 700);
+    expect(c.reps).toBe(5);
+  });
+
+  it('never counts from the front while holding still with jittering arms', () => {
+    const c = new RepCounter('pushup');
+    const keys = Array.from({ length: 60 }, (_, i) => (i % 2 ? 0 : 0.04));
+    play(c, (d) => frontPushupPose(d / 100, 0.4), keys.map((k) => k * 100), 200);
+    expect(c.reps).toBe(0);
   });
 
   it('does not count shallow dips from the front', () => {
