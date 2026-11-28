@@ -180,7 +180,7 @@ export default function Stats() {
 
   let body: ReactNode = null;
 
-  if (period === 'today' && !empty && todayLogs.length === 0) {
+  if (period === 'today' && todayLogs.length === 0) {
     // Nothing yet today: a big grey 0 against yesterday's count, so there's something to beat.
     const recent = dayLogs(bank, 0, today).flatMap((l) => l.workouts).slice(0, 3);
     const [yday] = dailyTotals(bank, addDays(today, -1), 1);
@@ -301,7 +301,7 @@ export default function Stats() {
         </Row>
       )}
 
-      {empty ? (
+      {empty && period !== 'today' ? (
         <View style={{ marginTop: 20 }}>
           <EmptyCard title="첫 기록을 만들어 보세요" sub="운동하면 날짜별로 여기에 쌓여요." />
         </View>
