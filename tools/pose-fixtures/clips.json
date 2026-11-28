@@ -26,7 +26,7 @@
     {"id": 52116, "exercise": "squat", "view": "front", "min": 1, "max": 1, "note": "low camera, feet cut off at first"},
     {"id": 52117, "exercise": "squat", "view": "front", "min": 2, "max": 2, "note": "one foot a little ahead of the other"},
     {"id": 752, "exercise": "squat", "view": "front", "min": 2, "max": 2, "note": "wall-ball squats: ball overhead at the top"},
-    {"id": 23914, "exercise": "squat", "view": "front", "min": 3, "max": 3, "note": "slow squats with long pauses"},
+    {"id": 23914, "exercise": "squat", "view": "front", "min": 0, "max": 3, "note": "two people: she squats facing the camera (3), he does split squats; MediaPipe may follow either"},
     {"id": 21273, "exercise": "squat", "view": "front", "min": 1, "max": 1, "note": "walks out of the picture after the rep"},
     {"id": 49038, "exercise": "squat", "view": "side", "min": 3, "max": 3},
     {"id": 36062, "exercise": "squat", "view": "side", "min": 5, "max": 5},
