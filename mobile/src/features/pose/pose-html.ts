@@ -14,6 +14,42 @@ const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
 
+
+/**
+ * Joint smoothing that runs in the camera page. Exported so the tests replay recorded
+ * MediaPipe output through exactly the same code as the phone.
+ */
+export const STEADY_JS = `
+// Steady the joints before drawing or counting. Joints outside the picture are guesses:
+// their visibility is cut so nothing trusts them. Each coordinate goes through a One Euro
+// filter (still = smooth, moving = responsive), and a low-confidence joint that jumps far
+// in one frame keeps its last place.
+const F = [];
+function euro(minCutoff, beta) {
+  let x = null, dx = 0, t = 0;
+  return (v, now) => {
+    if (x === null) { x = v; t = now; return v; }
+    const dt = Math.max(1e-3, (now - t) / 1000); t = now;
+    const a = (fc) => 1 / (1 + 1 / (2 * Math.PI * fc * dt));
+    dx += a(1) * ((v - x) / dt - dx);
+    x += a(minCutoff + beta * Math.abs(dx)) * (v - x);
+    return x;
+  };
+}
+function steady(lm, now) {
+  if (!lm) { F.length = 0; return null; }
+  return lm.map((p, i) => {
+    const inside = p.x > 0.01 && p.x < 0.99 && p.y > 0.01 && p.y < 0.99;
+    const vis = (p.visibility || 0) * (inside ? 1 : 0.3);
+    let f = F[i];
+    if (!f) f = F[i] = { fx: euro(1.2, 6), fy: euro(1.2, 6), x: p.x, y: p.y };
+    const jump = Math.hypot(p.x - f.x, p.y - f.y);
+    if (!(vis < 0.6 && jump > 0.12)) { f.x = f.fx(p.x, now); f.y = f.fy(p.y, now); }
+    return { x: f.x, y: f.y, visibility: vis };
+  });
+}
+`;
+
 export const POSE_HTML = `<!doctype html>
 <html>
 <head>
@@ -46,35 +82,7 @@ export const POSE_HTML = `<!doctype html>
     return landmarker;
   }
 
-  // Steady the joints before drawing or counting. Joints outside the picture are guesses:
-  // their visibility is cut so nothing trusts them. Each coordinate goes through a One Euro
-  // filter (still = smooth, moving = responsive), and a low-confidence joint that jumps far
-  // in one frame keeps its last place.
-  const F = [];
-  function euro(minCutoff, beta) {
-    let x = null, dx = 0, t = 0;
-    return (v, now) => {
-      if (x === null) { x = v; t = now; return v; }
-      const dt = Math.max(1e-3, (now - t) / 1000); t = now;
-      const a = (fc) => 1 / (1 + 1 / (2 * Math.PI * fc * dt));
-      dx += a(1) * ((v - x) / dt - dx);
-      x += a(minCutoff + beta * Math.abs(dx)) * (v - x);
-      return x;
-    };
-  }
-  function steady(lm, now) {
-    if (!lm) { F.length = 0; return null; }
-    return lm.map((p, i) => {
-      const inside = p.x > 0.01 && p.x < 0.99 && p.y > 0.01 && p.y < 0.99;
-      const vis = (p.visibility || 0) * (inside ? 1 : 0.3);
-      let f = F[i];
-      if (!f) f = F[i] = { fx: euro(1.2, 6), fy: euro(1.2, 6), x: p.x, y: p.y };
-      const jump = Math.hypot(p.x - f.x, p.y - f.y);
-      if (!(vis < 0.6 && jump > 0.12)) { f.x = f.fx(p.x, now); f.y = f.fy(p.y, now); }
-      return { x: f.x, y: f.y, visibility: vis };
-    });
-  }
-
+  ${STEADY_JS}
   // Body in faint white, the working limb (arm for push-ups, leg for squats) in glowing red.
   // A counted rep makes the limb flash brighter for a moment.
   let exercise = 'pushup', flashUntil = 0, ready = false;

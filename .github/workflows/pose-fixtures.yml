@@ -1,0 +1,32 @@
+name: pose-fixtures
+# Rebuilds the real-footage pose test data (see tools/pose-fixtures) and commits it.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['tools/pose-fixtures/**']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ffmpeg
+        run: which ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Playwright
+        working-directory: tools/pose-fixtures
+        run: npm install --no-save --no-package-lock playwright@1.49.1 && npx playwright install --with-deps chromium
+      - name: Extract landmarks
+        working-directory: tools/pose-fixtures
+        run: node extract.mjs
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/src/core/__tests__/fixtures/pose-clips.json.gz
+          git commit -m "Pose test data from free push-up clips" || exit 0
+          git push
