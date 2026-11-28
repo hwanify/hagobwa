@@ -416,6 +416,22 @@ describe('RepCounter: push-ups, phone in front', () => {
     expect(c.reps).toBe(5);
   });
 
+  it('counts when the start was higher than the reps (got into position from higher up)', () => {
+    const c = new RepCounter('pushup');
+    // Hold the start with the body higher than the real tops (gap 1.8 instead of 1.35).
+    const high = (d: number) => {
+      const lm = frontPose(0);
+      for (const i of [0, 11, 12, 13, 14]) lm[i] = { ...lm[i], y: lm[i].y - 0.45 * 0.3 * d };
+      return lm;
+    };
+    let { t } = play(c, high, [1, 1, 1, 1], 300);
+    // Then reps that only come back up to the normal top.
+    const keys = [0];
+    for (let i = 0; i < 6; i++) keys.push(1, 0);
+    play(c, (d) => frontPose(d), keys, 600, t);
+    expect(c.reps).toBeGreaterThanOrEqual(5);
+  });
+
   it('counts again after leaving the picture and coming back', () => {
     const c = new RepCounter('pushup');
     let { t } = play(c, (d) => frontPose(d), frontSet(2), 600);

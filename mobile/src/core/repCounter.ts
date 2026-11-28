@@ -263,8 +263,17 @@ function sidePushup(lm: Landmark[], side: Side): Measurement {
   return { ...base, valid: true, hint: '', plank, upright };
 }
 
-/** Largest move of a hand seen in both, or Infinity if no hand is shared. */
+/**
+ * Largest move of a hand seen in both, or Infinity if no hand is shared. MediaPipe sometimes
+ * swaps left and right for a few frames (seen at the bottom of reps from a raised phone), so
+ * with both hands the better of the two pairings counts: the hands didn't move, only the labels.
+ */
 function handsMoved(a: Partial<Record<Side, Point>>, b: Partial<Record<Side, Point>>): number {
+  if (a.left && a.right && b.left && b.right) {
+    const same = Math.max(dist(a.left, b.left), dist(a.right, b.right));
+    const swapped = Math.max(dist(a.left, b.right), dist(a.right, b.left));
+    return Math.min(same, swapped);
+  }
   let moved = -1;
   for (const side of ['left', 'right'] as const) {
     const p = a[side];
@@ -431,6 +440,14 @@ const ANCHOR_TAU = 1;
 const UPRIGHT_FRAMES = 8;
 /** A new front-view set takes its top from this much recent history (it may start mid-rep). */
 const RECENT_MS = 1500;
+/**
+ * Front view: if someone comes back up to at least this fraction of the set's top and goes down
+ * again, the top was set too high (e.g. while getting into position from higher up): that rep
+ * counts and its peak becomes the new top. The peak must still be straight arms
+ * (FRONT_EXTENDED), so short pulses near the bottom never re-top, and the 55% bottom rule
+ * applies to the new top.
+ */
+const RETOP_FRAC = 0.6;
 
 /**
  * Counts reps from a stream of pose frames.
@@ -479,6 +496,8 @@ export class RepCounter {
   private uprightFrames = 0;
   /** Front-view gaps of the last moments (kept across holds): the top of a new set comes from here. */
   private recentGaps: { t: number; v: number }[] = [];
+  /** Front view: highest gap since the last bottom. */
+  private peakSinceBottom = 0;
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
@@ -525,6 +544,7 @@ export class RepCounter {
     this.lastUsableAt = -Infinity;
     this.uprightFrames = 0;
     this.recentGaps = [];
+    this.peakSinceBottom = 0;
   }
 
   /** Stop counting until the person gets into position again. Keeps the count. */
@@ -631,7 +651,10 @@ export class RepCounter {
     });
 
     // The phone really moving to another spot shows as moving hands (see below) or a lost body.
-    const usable = m.valid && m.depth !== null && m.scale !== undefined && m.hands !== undefined && m.view !== undefined;
+    // From the front the shoulders only get wider as the body comes down: a frame where they
+    // collapse to half the width is MediaPipe stacking both shoulders on one spot. Skip it.
+    const collapsed = this.ready && m.view === 'front' && m.scale !== undefined && m.scale < 0.55 * this.anchorScale;
+    const usable = !collapsed && m.valid && m.depth !== null && m.scale !== undefined && m.hands !== undefined && m.view !== undefined;
     if (!usable) {
       if (this.hold && ++this.hold.misses > HOLD_MISSES) this.hold = null;
       let repCompleted = false;
@@ -673,14 +696,22 @@ export class RepCounter {
 
     // Hands are planted: if they jump off their spot, the phone or the person moved. Pause.
     // One glitchy frame can't do it; a real move shows in most of the last few frames.
-    const off = handsMoved(hands, this.anchor) > PLANTED_TOL[view] * this.anchorScale;
-    this.drift.push(off);
+    // MediaPipe sometimes stacks both wrists on one hand for a few frames: the hands' spacing
+    // collapses, which neither a moved phone nor a person does. Those frames don't vote.
+    const a = this.anchor;
+    const stacked =
+      !!(a.left && a.right && hands.left && hands.right) && dist(hands.left!, hands.right!) < 0.4 * dist(a.left!, a.right!);
+    const off = !stacked && handsMoved(hands, a) > PLANTED_TOL[view] * this.anchorScale;
+    if (!stacked) this.drift.push(off);
     if (this.drift.length > DRIFT_WINDOW) this.drift.shift();
     if (this.drift.filter(Boolean).length >= DRIFT_FRAMES) {
       this.endSet();
       return out(null, false, 'get-ready');
     }
-    if (!off) {
+    const swapped =
+      !!(a.left && a.right && hands.left && hands.right) &&
+      Math.max(dist(a.left!, hands.right!), dist(a.right!, hands.left!)) < Math.max(dist(a.left!, hands.left!), dist(a.right!, hands.right!));
+    if (!off && !swapped && !stacked) {
       // Slow drift (phone sliding, camera panning) is followed, so it never adds up to a pause.
       const k = 1 - Math.exp(-dt / ANCHOR_TAU);
       for (const side of ['left', 'right'] as const) {
@@ -702,7 +733,24 @@ export class RepCounter {
     }
     this.lastProgress = progress;
     this.lastUsableAt = nowMs;
-    return out(progress, this.step(progress, nowMs));
+    const before = this.state;
+    let repCompleted = this.step(progress, nowMs);
+    if (view === 'front') {
+      if (this.state === 'goingUp') this.peakSinceBottom = Math.max(this.peakSinceBottom, gap);
+      // Came up most of the way, then went down again: the top is too high. Count it, re-top.
+      const peak = this.peakSinceBottom;
+      if (before === 'goingUp' && this.state === 'down' && peak >= RETOP_FRAC * this.top && peak >= FRONT_EXTENDED) {
+        this.top = peak;
+        this.topCap = Math.max(this.topCap, peak * 1.6);
+        if (nowMs - this.lastRepAt >= MIN_REP_MS) {
+          this.lastRepAt = nowMs;
+          this.count++;
+          repCompleted = true;
+        }
+      }
+      if (this.state === 'down' && before !== 'down') this.peakSinceBottom = 0;
+    }
+    return out(progress, repCompleted);
   }
 
   /**
@@ -754,6 +802,7 @@ export class RepCounter {
     this.drift = [];
     this.uprightFrames = 0;
     this.recentGaps = [];
+    this.peakSinceBottom = 0;
   }
 
   private updateSquat(lm: Landmark[] | undefined, nowMs: number): RepUpdate {

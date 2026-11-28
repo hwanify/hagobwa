@@ -25,7 +25,14 @@ interface Clip {
 }
 
 const file = new URL('./fixtures/pose-clips.json.gz', import.meta.url);
-const clips: Clip[] = fs.existsSync(file) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString()).clips : [];
+// Expected counts live in tools/pose-fixtures/clips.json (edit there; no need to re-record).
+const expected = new URL('../../../../tools/pose-fixtures/clips.json', import.meta.url);
+const spec: Record<number, Partial<Clip>> = fs.existsSync(expected)
+  ? Object.fromEntries((JSON.parse(fs.readFileSync(expected, 'utf8')).clips as Clip[]).map((c) => [c.id, c]))
+  : {};
+const clips: Clip[] = fs.existsSync(file)
+  ? (JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString()).clips as Clip[]).map((c) => ({ ...c, ...spec[c.id] }))
+  : [];
 
 function replay(clip: Clip): number {
   const page = new Function(`${STEADY_JS}; return { steady, reset: () => { F.length = 0; } };`)() as {
