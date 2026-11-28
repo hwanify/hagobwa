@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Legend, MonthHeatmap, SplitBar, WeekBars } from '@/components/charts';
-import { Card, Divider, H1, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
+import { BarbellIcon } from '@/components/tab-icons';
+import { Button, Card, Divider, H1, Mono, Muted, Row, Screen, Segmented, T } from '@/components/ui';
 import { addDays, startOfDay, startOfWeek, WEEKDAY_LABELS } from '@/core/dates';
 import { formatDuration } from '@/core/format';
 import { EXERCISE_LABEL, EXERCISES } from '@/core/rates';
@@ -47,7 +49,16 @@ function Section({ title, right, children, first }: { title: string; right?: Rea
 }
 
 /** One workout as a log entry, text only: time, what was done, and the time it earned. */
-function RecordRow({ w, today }: { w: WorkoutRecord; today: number }) {
+/** "어제", "그제" or "11/26": for lists that mix days. */
+function shortDay(ms: number, today: number): string {
+  const day = startOfDay(ms);
+  if (day === addDays(today, -1)) return '어제';
+  if (day === addDays(today, -2)) return '그제';
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function RecordRow({ w, today, showDay = false }: { w: WorkoutRecord; today: number; showDay?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -55,7 +66,7 @@ function RecordRow({ w, today }: { w: WorkoutRecord; today: number }) {
       onPress={() => openCharge(w.id)}
       style={({ pressed }) => [styles.record, pressed && { opacity: 0.6 }]}
     >
-      <Mono style={styles.recordTime}>{timeOf(w.at)}</Mono>
+      <Mono style={styles.recordTime}>{showDay ? shortDay(w.at, today) : timeOf(w.at)}</Mono>
       <T style={{ flex: 1, fontSize: 16, fontWeight: '600' }}>
         {EXERCISE_LABEL[w.exercise]} {w.reps}회
       </T>
@@ -127,6 +138,25 @@ function DayBreakdown({ pushup, squat, earnedSec }: { pushup: number; squat: num
   );
 }
 
+/** Friendly empty state with a way straight into a workout, instead of a blank section. */
+function EmptyCard({ title, sub }: { title: string; sub: string }) {
+  return (
+    <Card style={styles.empty}>
+      <View style={styles.emptyIcon}>
+        <BarbellIcon color={colors.red} size={26} />
+      </View>
+      <T style={{ fontSize: 18, fontWeight: '800', marginTop: 14 }}>{title}</T>
+      <Muted style={{ marginTop: 4, textAlign: 'center' }}>{sub}</Muted>
+      <Button
+        style={{ marginTop: 16, alignSelf: 'stretch' }}
+        label="운동하고 충전하기"
+        icon={<BarbellIcon color={colors.white} size={20} />}
+        onPress={() => router.push('/workout')}
+      />
+    </Card>
+  );
+}
+
 export default function Stats() {
   const now = useNow(60_000);
   const bank = useAppStore((s) => s.bank);
@@ -145,12 +175,37 @@ export default function Stats() {
   const empty = bank.workouts.length === 0;
   const used = usageBetween(bank, from, tomorrow);
   const earned = totals.pushup.earnedSec + totals.squat.earnedSec;
+  const todayLogs = dayLogs(bank, today, tomorrow);
+  const quietToday = period === 'today' && todayLogs.length === 0;
 
   let body: ReactNode = null;
 
-  if (period === 'today') {
+  if (period === 'today' && !empty && todayLogs.length === 0) {
+    // Nothing yet today: encourage, and show the last few workouts so the tab isn't blank.
+    const recent = dayLogs(bank, 0, today).flatMap((l) => l.workouts).slice(0, 3);
+    body = (
+      <>
+        <View style={{ marginTop: 20 }}>
+          <EmptyCard
+            title="오늘은 아직이에요"
+            sub={streak > 0 ? `${streak}일 연속 중이에요. 오늘 하면 ${streak + 1}일째!` : '한 세트만 해도 시간이 충전돼요.'}
+          />
+        </View>
+        {recent.length > 0 && (
+          <Section title="최근 기록">
+            {recent.map((w, i) => (
+              <View key={w.id}>
+                {i > 0 && <Divider />}
+                <RecordRow w={w} today={today} showDay />
+              </View>
+            ))}
+          </Section>
+        )}
+      </>
+    );
+  } else if (period === 'today') {
     const [t] = dailyTotals(bank, today, 1);
-    const logs = dayLogs(bank, today, tomorrow);
+    const logs = todayLogs;
     body = (
       <>
         <Section title="오늘 한 운동" right={`${streak}일 연속`} first>
@@ -216,7 +271,7 @@ export default function Stats() {
         </View>
       )}
 
-      {!empty && (
+      {!empty && !quietToday && (
         <Row style={styles.usage}>
           <Muted style={{ fontSize: 13 }}>{PERIODS.find((p) => p.id === period)?.label} 잠긴 앱 사용</Muted>
           <T style={{ fontSize: 15, fontWeight: '800' }}>
@@ -226,13 +281,21 @@ export default function Stats() {
         </Row>
       )}
 
-      {empty ? <Muted style={{ paddingVertical: 24 }}>아직 운동 기록이 없어요. 운동하면 여기에 쌓여요.</Muted> : body}
+      {empty ? (
+        <View style={{ marginTop: 20 }}>
+          <EmptyCard title="첫 기록을 만들어 보세요" sub="운동하면 날짜별로 여기에 쌓여요." />
+        </View>
+      ) : (
+        body
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
+  empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20 },
+  emptyIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   usage: { justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   record: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
