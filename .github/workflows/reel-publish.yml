@@ -1,0 +1,27 @@
+name: reel-publish
+# Puts a finished Reels video on a GitHub Release so it can be downloaded as a file on the phone.
+on:
+  workflow_dispatch:
+    inputs:
+      url: { description: 'video URL', required: true }
+      tag: { description: 'release tag', required: true }
+  push:
+    paths: ['docs/reels/publish.txt']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IN_URL: ${{ inputs.url }}
+          IN_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -z "$IN_URL" ]; then read -r IN_TAG IN_URL < docs/reels/publish.txt; fi
+          curl -sfL -o "$IN_TAG.mp4" "$IN_URL"
+          ls -la "$IN_TAG.mp4"
+          gh release delete "$IN_TAG" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$IN_TAG" "$IN_TAG.mp4" --title "$IN_TAG" --notes "Reels video" --prerelease --target "$GITHUB_SHA"
