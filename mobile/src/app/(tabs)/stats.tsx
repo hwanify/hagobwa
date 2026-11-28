@@ -138,25 +138,6 @@ function DayBreakdown({ pushup, squat, earnedSec }: { pushup: number; squat: num
   );
 }
 
-/** Friendly empty state with a way straight into a workout, instead of a blank section. */
-function EmptyCard({ title, sub }: { title: string; sub: string }) {
-  return (
-    <Card style={styles.empty}>
-      <View style={styles.emptyIcon}>
-        <BarbellIcon color={colors.red} size={26} />
-      </View>
-      <T style={{ fontSize: 18, fontWeight: '800', marginTop: 14 }}>{title}</T>
-      <Muted style={{ marginTop: 4, textAlign: 'center' }}>{sub}</Muted>
-      <Button
-        style={{ marginTop: 16, alignSelf: 'stretch' }}
-        label="운동하고 충전하기"
-        icon={<BarbellIcon color={colors.white} size={20} />}
-        onPress={() => router.push('/workout')}
-      />
-    </Card>
-  );
-}
-
 export default function Stats() {
   const now = useNow(60_000);
   const bank = useAppStore((s) => s.bank);
@@ -172,7 +153,6 @@ export default function Stats() {
   const from = period === 'today' ? today : period === 'week' ? weekStart : period === 'month' ? monthStart : 0;
   const totals = exerciseTotals(bank, from, tomorrow);
   const streak = streakDays(bank, now);
-  const empty = bank.workouts.length === 0;
   const used = usageBetween(bank, from, tomorrow);
   const earned = totals.pushup.earnedSec + totals.squat.earnedSec;
   const todayLogs = dayLogs(bank, today, tomorrow);
@@ -285,13 +265,13 @@ export default function Stats() {
         <Segmented options={PERIODS} value={period} onChange={setPeriod} stretch plain />
       </View>
 
-      {period !== 'today' && !empty && (
+      {period !== 'today' && (
         <View style={{ marginTop: 20 }}>
           <StatCards pushup={totals.pushup.reps} squat={totals.squat.reps} earnedSec={totals.pushup.earnedSec + totals.squat.earnedSec} />
         </View>
       )}
 
-      {!empty && !quietToday && (
+      {!quietToday && (
         <Row style={styles.usage}>
           <Muted style={{ fontSize: 13 }}>{PERIODS.find((p) => p.id === period)?.label} 잠긴 앱 사용</Muted>
           <T style={{ fontSize: 15, fontWeight: '800' }}>
@@ -301,25 +281,17 @@ export default function Stats() {
         </Row>
       )}
 
-      {empty && period !== 'today' ? (
-        <View style={{ marginTop: 20 }}>
-          <EmptyCard title="첫 기록을 만들어 보세요" sub="운동하면 날짜별로 여기에 쌓여요." />
-        </View>
-      ) : (
-        body
-      )}
+      {body}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
-  empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20 },
   zero: { alignItems: 'center', marginTop: 32 },
   zeroNum: { fontSize: 76, lineHeight: 84, letterSpacing: -3, color: '#C9CAC2' },
   zeroUnit: { fontSize: 22, fontWeight: '700', color: '#C9CAC2' },
   zeroTrack: { width: 220, height: 8, borderRadius: 8, backgroundColor: colors.dim, marginTop: 10 },
-  emptyIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   usage: { justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   record: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
