@@ -42,6 +42,8 @@ export interface Measurement {
   plank?: boolean;
   /** Push-up from the front: each visible arm's shoulders-to-hand gap (x shoulder width). */
   gaps?: Partial<Record<Side, number>>;
+  /** Push-up: body upright (standing or sitting), which never happens during a push-up. */
+  upright?: boolean;
 }
 
 export interface RepUpdate extends Measurement {
@@ -218,12 +220,10 @@ function frontPushup(lm: Landmark[]): Measurement | null {
   const shoulderY = (L.s.y + R.s.y) / 2;
   // Plank: both hands on the floor (level) below the shoulders, and the head not above the
   // shoulders like when standing or sitting. Looking down (nose hidden) is fine.
-  const plank =
-    arms.length === 2 &&
-    Math.abs(L.w.y - R.w.y) <= 0.35 * width &&
-    depth >= 0.4 &&
-    (vis(nose) < VIS || nose.y > shoulderY - 0.3 * width);
-  return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps };
+  const headAbove = vis(nose) >= VIS && nose.y < shoulderY - 0.3 * width;
+  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.4 && !headAbove;
+  const upright = vis(nose) >= VIS && nose.y < shoulderY - 0.4 * width;
+  return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps, upright };
 }
 
 /** Push-up filmed from the side: elbow angle plus how far the hand is below the shoulder. */
@@ -243,7 +243,8 @@ function sidePushup(lm: Landmark[], side: Side): Measurement {
   // Plank: hand below the shoulder, and the torso closer to flat than upright (if the hip shows).
   const flat = vis(d.h) <= VIS || Math.abs(d.h.y - d.s.y) <= 0.7 * Math.abs(d.h.x - d.s.x);
   const plank = depth !== null && depth >= 0.3 && flat;
-  return { ...base, valid: true, hint: '', plank };
+  const upright = vis(d.h) > VIS && Math.abs(d.h.y - d.s.y) > 1.5 * Math.abs(d.h.x - d.s.x);
+  return { ...base, valid: true, hint: '', plank, upright };
 }
 
 /** Largest move of a hand seen in both, or Infinity if no hand is shared. */
@@ -406,6 +407,13 @@ const DRIFT_WINDOW = 6;
 const VIEW_CHANGE_FRAMES = 27;
 /** Through dropouts this short the last reading holds, so a rep that just reached the top still counts. */
 const HOLD_GAP_MS = 300;
+/**
+ * The hands' spot follows them this slowly (s). A phone that slides or a slowly panning camera
+ * is fine; a bump, a pick-up or a lifted hand is faster than this and pauses the set.
+ */
+const ANCHOR_TAU = 1;
+/** Upright (head above the shoulders / torso vertical) this many frames in a row ends the set. */
+const UPRIGHT_FRAMES = 8;
 
 /**
  * Counts reps from a stream of pose frames.
@@ -452,6 +460,7 @@ export class RepCounter {
   private viewMisses = 0;
   private lastProgress: number | null = null;
   private lastUsableAt = -Infinity;
+  private uprightFrames = 0;
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
@@ -497,6 +506,7 @@ export class RepCounter {
     this.viewMisses = 0;
     this.lastProgress = null;
     this.lastUsableAt = -Infinity;
+    this.uprightFrames = 0;
   }
 
   /** Stop counting until the person gets into position again. Keeps the count. */
@@ -637,13 +647,31 @@ export class RepCounter {
       return out(null, false, m.hint || (this.ready ? '' : 'get-ready'));
     }
 
-    // Hands are planted: if they stay off their spot, the phone or the person moved. Pause.
+    // Standing or sitting up: the set is over.
+    this.uprightFrames = m.upright ? this.uprightFrames + 1 : 0;
+    if (this.uprightFrames >= UPRIGHT_FRAMES) {
+      this.endSet();
+      return out(null, false, 'get-ready');
+    }
+
+    // Hands are planted: if they jump off their spot, the phone or the person moved. Pause.
     // One glitchy frame can't do it; a real move shows in most of the last few frames.
-    this.drift.push(handsMoved(hands, this.anchor) > PLANTED_TOL[view] * this.anchorScale);
+    const off = handsMoved(hands, this.anchor) > PLANTED_TOL[view] * this.anchorScale;
+    this.drift.push(off);
     if (this.drift.length > DRIFT_WINDOW) this.drift.shift();
     if (this.drift.filter(Boolean).length >= DRIFT_FRAMES) {
       this.endSet();
       return out(null, false, 'get-ready');
+    }
+    if (!off) {
+      // Slow drift (phone sliding, camera panning) is followed, so it never adds up to a pause.
+      const k = 1 - Math.exp(-dt / ANCHOR_TAU);
+      for (const side of ['left', 'right'] as const) {
+        const a = this.anchor[side];
+        const p = hands[side];
+        if (a && p) this.anchor[side] = { x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k };
+      }
+      this.anchorScale += (scale - this.anchorScale) * k;
     }
 
     let progress: number;
@@ -697,6 +725,7 @@ export class RepCounter {
     this.pending = null;
     this.pendingFrames = 0;
     this.drift = [];
+    this.uprightFrames = 0;
   }
 
   private updateSquat(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
