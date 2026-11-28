@@ -390,8 +390,6 @@ interface Hold {
   hands: Partial<Record<Side, Point>>;
   /** Latest hands seen (both, once a front frame showed both). */
   last: Partial<Record<Side, Point>>;
-  /** Recent front-view gaps: a high percentile becomes the top of the set. */
-  vals: { t: number; v: number }[];
   /** How many frames read as each camera view: the set takes the majority. */
   views: Record<'front' | 'side', number>;
   /** Latest body scale per view. */
@@ -429,6 +427,8 @@ const HOLD_GAP_MS = 300;
 const ANCHOR_TAU = 1;
 /** Upright (head above the shoulders / torso vertical) this many frames in a row ends the set. */
 const UPRIGHT_FRAMES = 8;
+/** A new front-view set takes its top from this much recent history (it may start mid-rep). */
+const RECENT_MS = 1500;
 
 /**
  * Counts reps from a stream of pose frames.
@@ -475,6 +475,8 @@ export class RepCounter {
   private lastProgress: number | null = null;
   private lastUsableAt = -Infinity;
   private uprightFrames = 0;
+  /** Front-view gaps of the last moments (kept across holds): the top of a new set comes from here. */
+  private recentGaps: { t: number; v: number }[] = [];
 
   constructor(private exercise: ExerciseId) {
     this.angleRange = new AdaptiveRange(DEFAULT_RANGE[exercise], MIN_ANGLE_RANGE);
@@ -520,6 +522,7 @@ export class RepCounter {
     this.lastProgress = null;
     this.lastUsableAt = -Infinity;
     this.uprightFrames = 0;
+    this.recentGaps = [];
   }
 
   /** Stop counting until the person gets into position again. Keeps the count. */
@@ -647,6 +650,10 @@ export class RepCounter {
     const dt = this.lastT === null ? 0 : Math.max(0, (nowMs - this.lastT) / 1000);
     this.lastT = nowMs;
     const gap = view === 'front' ? this.gapFilter.filter(this.gapMedian.push(this.frontGap(m)), nowMs) : 0;
+    if (view === 'front') {
+      this.recentGaps.push({ t: nowMs, v: gap });
+      while (this.recentGaps[0].t < nowMs - RECENT_MS) this.recentGaps.shift();
+    }
     const sideProgress = view === 'side' ? this.angleProgress(m, nowMs, dt) : null;
 
     if (!this.ready) {
@@ -703,7 +710,7 @@ export class RepCounter {
     const h = this.hold;
     if (!h || (!plank && ++h.misses > HOLD_MISSES)) {
       this.hold = plank
-        ? { start: nowMs, hands, last: { ...hands }, vals: view === 'front' ? [{ t: nowMs, v: gap }] : [], views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
+        ? { start: nowMs, hands, last: { ...hands }, views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
         : null;
       return;
     }
@@ -716,14 +723,13 @@ export class RepCounter {
     h.views[view]++;
     h.scale[view] = scale;
     Object.assign(h.last, hands);
-    if (view === 'front') h.vals.push({ t: nowMs, v: gap });
-    while (h.vals.length && h.vals[0].t < nowMs - 2 * READY_MS) h.vals.shift();
     if (nowMs - h.start < READY_MS) return;
     const setView = h.views.front >= h.views.side ? 'front' : 'side';
-    // Top of the set: 75th percentile of the last moments, so one glitchy frame can't set it.
-    const sorted = h.vals.map((x) => x.v).sort((a, b) => a - b);
-    const top = sorted.length ? sorted[Math.floor(0.75 * (sorted.length - 1))] : 0;
-    // Front view: the arms must be straight around now, so the top is a real top.
+    // Top of the set: 90th percentile of the last 1.5 s, so the set can start mid-rep, while a
+    // glitchy frame or two can't set it.
+    const sorted = this.recentGaps.map((x) => x.v).sort((a, b) => a - b);
+    const top = sorted.length ? sorted[Math.floor(0.9 * (sorted.length - 1))] : 0;
+    // Front view: the arms must have been straight just now, so the top is a real top.
     if (setView === 'front' && top < FRONT_EXTENDED) return;
     this.ready = true;
     this.hold = null;
@@ -744,6 +750,7 @@ export class RepCounter {
     this.pendingFrames = 0;
     this.drift = [];
     this.uprightFrames = 0;
+    this.recentGaps = [];
   }
 
   private updateSquat(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
