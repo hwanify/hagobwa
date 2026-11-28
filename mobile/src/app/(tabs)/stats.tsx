@@ -181,16 +181,36 @@ export default function Stats() {
   let body: ReactNode = null;
 
   if (period === 'today' && !empty && todayLogs.length === 0) {
-    // Nothing yet today: encourage, and show the last few workouts so the tab isn't blank.
+    // Nothing yet today: a big grey 0 against yesterday's count, so there's something to beat.
     const recent = dayLogs(bank, 0, today).flatMap((l) => l.workouts).slice(0, 3);
+    const [yday] = dailyTotals(bank, addDays(today, -1), 1);
+    const ydayReps = yday.pushup + yday.squat;
     body = (
       <>
-        <View style={{ marginTop: 20 }}>
-          <EmptyCard
-            title="오늘은 아직이에요"
-            sub={streak > 0 ? `${streak}일 연속 중이에요. 오늘 하면 ${streak + 1}일째!` : '한 세트만 해도 시간이 충전돼요.'}
-          />
+        <View style={styles.zero}>
+          <Muted style={{ fontSize: 13, fontWeight: '600' }}>오늘</Muted>
+          <Mono style={styles.zeroNum}>
+            0<T style={styles.zeroUnit}>회</T>
+          </Mono>
+          <View style={styles.zeroTrack} />
+          <Muted style={{ marginTop: 10, fontSize: 13 }}>
+            {ydayReps > 0 ? (
+              <>
+                어제 <T style={{ fontSize: 13, fontWeight: '800' }}>{ydayReps}회</T> · 이길 수 있어요
+              </>
+            ) : streak > 0 ? (
+              `${streak}일 연속 중이에요. 오늘 하면 ${streak + 1}일째!`
+            ) : (
+              '한 세트만 해도 시간이 충전돼요.'
+            )}
+          </Muted>
         </View>
+        <Button
+          style={{ marginTop: 22 }}
+          label="운동하고 충전하기"
+          icon={<BarbellIcon color={colors.white} size={20} />}
+          onPress={() => router.push('/workout')}
+        />
         {recent.length > 0 && (
           <Section title="최근 기록">
             {recent.map((w, i) => (
@@ -295,6 +315,10 @@ export default function Stats() {
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800' },
   empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20 },
+  zero: { alignItems: 'center', marginTop: 32 },
+  zeroNum: { fontSize: 76, lineHeight: 84, letterSpacing: -3, color: colors.dim },
+  zeroUnit: { fontSize: 22, fontWeight: '700', color: colors.dim },
+  zeroTrack: { width: 220, height: 8, borderRadius: 8, backgroundColor: colors.dim, marginTop: 10 },
   emptyIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   usage: { justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
   stat: { fontSize: 18, fontWeight: '800', marginTop: 4 },
