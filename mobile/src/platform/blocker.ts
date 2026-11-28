@@ -382,7 +382,7 @@ screenTime.diagnose = () => {
   const monText = mon?.mode
     ? `${mon.mode}${mon.until ? ` ~${new Date(mon.until).getMonth() + 1}/${new Date(mon.until).getDate()} ${String(new Date(mon.until).getHours()).padStart(2, '0')}:${String(new Date(mon.until).getMinutes()).padStart(2, '0')}` : ''}`
     : '기록없음';
-  const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 6), '?');
+  const ota = safe(() => (Updates.updateId ?? 'embedded').slice(0, 8), '?');
   return `권한 ${auth === 2 ? 'O' : auth} · 선택 ${picked} · 잠금 ${shield} · 모니터 ${monitors}(${monText}) · 마지막잠금변경 ${lastText} · v${ota}`;
 };
 

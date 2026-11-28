@@ -40,3 +40,17 @@
 | 2.1 앱 완성도 (크래시/동작 안 함) | 어떤 화면에서 그런지 알려 주면 수정 |
 | 5.1.1 개인정보 | 개인정보처리방침 URL이 열리는지 확인 |
 | Family Controls 관련 | 본인 사용(individual) 목적이라고 답변 (심사 메모에 있음) |
+
+## 다음 네이티브 변경(새 빌드) 때 같이 할 일
+
+지금 고치면 네이티브 지문(런타임 버전)이 바뀌어서 빌드 18 사용자에게 OTA가 끊겨요. 결제(RevenueCat)처럼 어차피 새 빌드가 필요한 변경이 생길 때 같이 넣어요.
+
+### 확장 프로그램 빌드 번호(CFBundleVersion) 맞추기
+- 증상: 빌드를 올리면 App Store Connect가 경고를 보내요. `The CFBundleVersion of an app extension ('1') must match that of its containing parent app ('18')`. 경고일 뿐이라 심사와 배포는 돼요.
+- 원인: 스크린타임 확장 3개(`targets/ActivityMonitorExtension`, `ShieldAction`, `ShieldConfiguration`)는 `@kingstinct/expo-apple-targets`가 만들어요. 이 플러그인은 확장의 `CURRENT_PROJECT_VERSION`을 prebuild 시점의 `ios.buildNumber`로 정하는데, 값이 없으면 `1`을 써요. 빌드 번호는 EAS 원격 버전(`appVersionSource: remote`, `autoIncrement`)이라 prebuild 뒤에 본 앱에만 들어가요.
+- 고치는 방법(추천):
+  1. `ios-release.yml`의 빌드 잡에서 `eas build --local` 전에 다음 번호를 구해요. `npx eas-cli build:version:get --platform ios --profile production --json`로 지금 번호를 받아 +1 하고, 환경 변수(예: `HAGOBWA_BUILD_NUMBER`)로 넘겨요.
+  2. `app.json`을 `app.config.js`로 감싸서 그 변수가 있을 때만 `ios.buildNumber`에 넣어요. 그러면 확장 3개도 같은 번호를 받아요.
+  3. 먼저 확인할 것: 이 값 때문에 지문이 빌드마다 바뀌면 안 돼요. `npx eas-cli fingerprint:generate --platform ios --build-profile production --json`을 번호만 바꿔 두 번 돌려 해시가 같은지 봐요. 다르면 `@expo/fingerprint`의 `sourceSkips`에 `ExpoConfigVersions`를 넣어요(`fingerprint.config.js`).
+- 확인: 새 빌드 업로드 뒤 경고 메일이 안 오면 끝. 또는 `.ipa`를 풀어 `PlugIns/*.appex/Info.plist`의 `CFBundleVersion`이 앱 번호와 같은지 봐요.
+- 주의: `app.json`의 `version`(1.0.0)은 이 작업에서 바꾸지 않아요. 바꾸면 지문이 바뀌어요.

@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { AppId } from '@/core/apps';
+import { firstOpenedAtFor } from '@/core/plan';
 import { repsNeeded, type Difficulty, type ExerciseId } from '@/core/rates';
 import {
   applyEmergency,
@@ -50,6 +51,12 @@ interface Actions {
   syncBlocker(opts?: { restart?: boolean }): Promise<void>;
 }
 
+/** Kept on the phone only, never sent anywhere (see core/plan). */
+interface Install {
+  /** First time this phone opened the app (ms; 0 until known): early-bird backup evidence. */
+  firstOpenedAt: number;
+}
+
 /** When the OS usage monitor was last (re)started, so its checkpoints can be charged once. */
 interface BlockerSync {
   blockerSince: number;
@@ -59,9 +66,10 @@ interface BlockerSync {
   blockerUntil: number;
 }
 
-export type AppState = Settings & { bank: BankState } & BlockerSync & Actions;
+export type AppState = Settings & { bank: BankState } & BlockerSync & Install & Actions;
 
-const defaults: Settings & { bank: BankState } & BlockerSync = {
+const defaults: Settings & { bank: BankState } & BlockerSync & Install = {
+  firstOpenedAt: 0,
   blockerSince: 0,
   blockerCharged: 0,
   blockerUntil: -1,
@@ -153,7 +161,8 @@ export const useAppStore = create<AppState>()(
       },
 
       resetAll: () => {
-        set({ ...defaults, bank: emptyBank() });
+        // Everything goes, as the privacy policy says; this phone "first opens" again now.
+        set({ ...defaults, bank: emptyBank(), firstOpenedAt: Date.now() });
         void get().syncBlocker();
       },
 
@@ -174,7 +183,8 @@ export const useAppStore = create<AppState>()(
       name: 'hagobwa-v1',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: ({ onboarded, goalHours, lockedApps, difficulty, sound, bank, blockerSince, blockerCharged, blockerUntil }) => ({
+      partialize: ({ onboarded, goalHours, lockedApps, difficulty, sound, bank, blockerSince, blockerCharged, blockerUntil, firstOpenedAt }) => ({
+        firstOpenedAt,
         blockerSince,
         blockerCharged,
         blockerUntil,
@@ -185,6 +195,13 @@ export const useAppStore = create<AppState>()(
         sound,
         bank,
       }),
+      // Saved data from before firstOpenedAt existed loads as is (it just lacks the field, so the
+      // default 0 stays); fill it in once, here, and never touch it again.
+      onRehydrateStorage: () => (state, error) => {
+        if (error || !state) return;
+        const at = firstOpenedAtFor(state.firstOpenedAt, state.bank.workouts.map((w) => w.at), Date.now());
+        if (at !== state.firstOpenedAt) useAppStore.setState({ firstOpenedAt: at });
+      },
     },
   ),
 );

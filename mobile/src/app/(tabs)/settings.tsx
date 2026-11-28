@@ -25,7 +25,7 @@ function mailSupport() {
 
 function versionText(): string {
   const v = Constants.expoConfig?.version ?? '';
-  const ota = Updates.updateId ? ` (${Updates.updateId.slice(0, 6)})` : '';
+  const ota = Updates.updateId ? ` (${Updates.updateId.slice(0, 8)})` : '';
   return `하고봐 ${v}${ota}`;
 }
 
