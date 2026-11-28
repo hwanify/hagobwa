@@ -146,11 +146,17 @@ export function bestSide(lm: Landmark[], exercise: ExerciseId): Side {
   return sideScore(lm, exercise, 'left') >= sideScore(lm, exercise, 'right') ? 'left' : 'right';
 }
 
-export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?: Side): Measurement {
+/**
+ * `view` (push-ups) measures that way regardless of how the frame looks. A phone at an angle
+ * reads as "front" at the bottom of a rep (elbows flared) and "side" at the top, so a running
+ * set keeps the view it started with; both ways of measuring work from an angle.
+ */
+export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?: Side, view?: 'front' | 'side'): Measurement {
   if (!lm || lm.length < 29) return { angle: null, depth: null, valid: false, hint: 'no-person' };
 
   if (exercise === 'pushup') {
-    const front = frontPushup(lm);
+    if (view === 'front') return frontPushup(lm, true) ?? { angle: null, depth: null, valid: false, hint: 'show-hands', view: 'front' };
+    const front = view === 'side' ? null : frontPushup(lm);
     if (front) return front;
     const m = sidePushup(lm, side ?? bestSide(lm, exercise));
     // Shoulders at/above the top edge: the phone is too close or tilted down. Say so, but keep
@@ -179,7 +185,7 @@ const FRONT_SHOULDER_RATIO = 0.7;
  * the same way, so it can't fake a rep (and moving hands pause the set, see RepCounter).
  * No wrists in sight = no count: guessed arms jitter.
  */
-function frontPushup(lm: Landmark[]): Measurement | null {
+function frontPushup(lm: Landmark[], forced = false): Measurement | null {
   const L = joints(lm, 'left');
   const R = joints(lm, 'right');
   if (vis(L.s) < VIS || vis(R.s) < VIS) return null;
@@ -193,7 +199,7 @@ function frontPushup(lm: Landmark[]): Measurement | null {
   // Face between the shoulders = facing the camera; or shoulders wide next to the upper arm.
   const faceOn = vis(nose) >= VIS && nose.x > lo + inset && nose.x < hi - inset && (upper === 0 || width >= 0.45 * upper);
   const wide = upper > 0 && width >= FRONT_SHOULDER_RATIO * upper;
-  if (!faceOn && !wide) return null;
+  if (!faceOn && !wide && !forced) return null;
 
   const arms = (['left', 'right'] as const).map((side) => [side, side === 'left' ? L : R] as const).filter(([, a]) => vis(a.w) >= HAND_VIS);
   if (arms.length === 0) {
@@ -380,10 +386,16 @@ function nextState(state: State, progress: number): State {
 
 interface Hold {
   start: number;
+  /** Where the hands were planted when the hold began. */
   hands: Partial<Record<Side, Point>>;
-  /** Recent gaps while holding (front view): a high percentile becomes the top of the set. */
+  /** Latest hands seen (both, once a front frame showed both). */
+  last: Partial<Record<Side, Point>>;
+  /** Recent front-view gaps: a high percentile becomes the top of the set. */
   vals: { t: number; v: number }[];
-  view: 'front' | 'side';
+  /** How many frames read as each camera view: the set takes the majority. */
+  views: Record<'front' | 'side', number>;
+  /** Latest body scale per view. */
+  scale: Partial<Record<'front' | 'side', number>>;
   /** Frames in a row that broke the hold (not a plank / hands moved); a few are forgiven. */
   misses: number;
 }
@@ -408,11 +420,6 @@ const HOLD_MISSES = 3;
 /** The set pauses when the hands are off their spot in this many of the last DRIFT_WINDOW frames. */
 const DRIFT_FRAMES = 4;
 const DRIFT_WINDOW = 6;
-/**
- * The camera view (front/side) must read differently this many frames in a row (~1.5 s) to
- * end a set. Shorter flips happen when a shoulder pokes out of the picture at the top of a rep.
- */
-const VIEW_CHANGE_FRAMES = 27;
 /** Through dropouts this short the last reading holds, so a rep that just reached the top still counts. */
 const HOLD_GAP_MS = 300;
 /**
@@ -465,7 +472,6 @@ export class RepCounter {
   private topCap = 1;
   private lostSince: number | null = null;
   private drift: boolean[] = [];
-  private viewMisses = 0;
   private lastProgress: number | null = null;
   private lastUsableAt = -Infinity;
   private uprightFrames = 0;
@@ -511,7 +517,6 @@ export class RepCounter {
     this.hold = null;
     this.lostSince = null;
     this.drift = [];
-    this.viewMisses = 0;
     this.lastProgress = null;
     this.lastUsableAt = -Infinity;
     this.uprightFrames = 0;
@@ -608,7 +613,8 @@ export class RepCounter {
   }
 
   private updatePushup(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
-    const m = measure(lm, 'pushup', this.pickSide(lm, nowMs));
+    // A running set keeps its camera view; see measure().
+    const m = measure(lm, 'pushup', this.pickSide(lm, nowMs), this.ready ? this.setView : undefined);
     const out = (progress: number | null, repCompleted: boolean, hint = m.hint): RepUpdate => ({
       ...m,
       hint,
@@ -619,15 +625,8 @@ export class RepCounter {
       ready: this.ready,
     });
 
-    let usable = m.valid && m.depth !== null && m.scale !== undefined && m.hands !== undefined && m.view !== undefined;
-    // A frame that suddenly reads as the other camera view is usually a glitch: skip it.
-    // Only a lasting change (the phone really moved to the side) ends the set.
-    if (usable && this.ready && m.view !== this.setView) {
-      if (++this.viewMisses >= VIEW_CHANGE_FRAMES) this.endSet();
-      else usable = false;
-    } else if (usable) {
-      this.viewMisses = 0;
-    }
+    // The phone really moving to another spot shows as moving hands (see below) or a lost body.
+    const usable = m.valid && m.depth !== null && m.scale !== undefined && m.hands !== undefined && m.view !== undefined;
     if (!usable) {
       if (this.hold && ++this.hold.misses > HOLD_MISSES) this.hold = null;
       let repCompleted = false;
@@ -651,7 +650,7 @@ export class RepCounter {
     const sideProgress = view === 'side' ? this.angleProgress(m, nowMs, dt) : null;
 
     if (!this.ready) {
-      this.tryStart(m.plank === true, view, hands, scale, view === 'front' ? gap : (m.angle ?? 0), nowMs);
+      this.tryStart(m.plank === true, view, hands, scale, gap, nowMs);
       return out(null, false, m.hint || (this.ready ? '' : 'get-ready'));
     }
 
@@ -696,36 +695,45 @@ export class RepCounter {
     return out(progress, this.step(progress, nowMs));
   }
 
-  /** Start a set once a plank has been held with the hands still for READY_MS. */
-  private tryStart(plank: boolean, view: 'front' | 'side', hands: Partial<Record<Side, Point>>, scale: number, value: number, nowMs: number): void {
+  /**
+   * Start a set once a plank has been held with the hands still for READY_MS. Frames may read
+   * as front or side (a phone at an angle flips between them); the set takes the majority.
+   */
+  private tryStart(plank: boolean, view: 'front' | 'side', hands: Partial<Record<Side, Point>>, scale: number, gap: number, nowMs: number): void {
     const h = this.hold;
-    const fresh = () => {
-      this.hold = plank ? { start: nowMs, hands, vals: [{ t: nowMs, v: value }], view, misses: 0 } : null;
-    };
-    if (!h) return fresh();
-    const off = !plank || h.view !== view || handsMoved(hands, h.hands) > HOLD_HANDS_TOL * scale;
-    if (off) {
-      if (++h.misses > HOLD_MISSES) fresh();
+    if (!h || (!plank && ++h.misses > HOLD_MISSES)) {
+      this.hold = plank
+        ? { start: nowMs, hands, last: { ...hands }, vals: view === 'front' ? [{ t: nowMs, v: gap }] : [], views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
+        : null;
+      return;
+    }
+    if (!plank) return;
+    if (handsMoved(hands, h.hands) > HOLD_HANDS_TOL * scale) {
+      if (++h.misses > HOLD_MISSES) this.hold = null;
       return;
     }
     h.misses = 0;
-    h.vals.push({ t: nowMs, v: value });
-    while (h.vals[0].t < nowMs - 2 * READY_MS) h.vals.shift();
+    h.views[view]++;
+    h.scale[view] = scale;
+    Object.assign(h.last, hands);
+    if (view === 'front') h.vals.push({ t: nowMs, v: gap });
+    while (h.vals.length && h.vals[0].t < nowMs - 2 * READY_MS) h.vals.shift();
     if (nowMs - h.start < READY_MS) return;
+    const setView = h.views.front >= h.views.side ? 'front' : 'side';
     // Top of the set: 75th percentile of the last moments, so one glitchy frame can't set it.
     const sorted = h.vals.map((x) => x.v).sort((a, b) => a - b);
-    const top = sorted[Math.floor(0.75 * (sorted.length - 1))];
+    const top = sorted.length ? sorted[Math.floor(0.75 * (sorted.length - 1))] : 0;
     // Front view: the arms must be straight around now, so the top is a real top.
-    if (view === 'front' && top < FRONT_EXTENDED) return;
+    if (setView === 'front' && top < FRONT_EXTENDED) return;
     this.ready = true;
     this.hold = null;
-    this.setView = view;
-    this.anchor = hands;
-    this.anchorScale = scale;
-    this.top = view === 'front' ? top : 1;
+    this.setView = setView;
+    this.anchor = h.last;
+    this.anchorScale = h.scale[setView] ?? scale;
+    this.top = setView === 'front' ? top : 1;
     // If the set started mid-rep the top is underestimated: let it grow to the real one.
     this.topCap = this.top * 1.6;
-    if (view === 'side') {
+    if (setView === 'side') {
       // Learn the elbow range from this set only, not from getting into position.
       this.angleRange.reset();
       this.depthRange.reset();
