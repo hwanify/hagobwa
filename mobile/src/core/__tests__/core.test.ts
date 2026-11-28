@@ -204,17 +204,83 @@ function pushupPose(elbowDeg: number, sag = false): Landmark[] {
   return lm;
 }
 
-function squatPose(kneeDeg: number): Landmark[] {
+interface SquatOpts {
+  /** Whole picture moved/zoomed (phone moved). */
+  shift?: { x: number; y: number };
+  zoom?: number;
+  /** Random joint wobble, in picture units. */
+  noise?: number;
+  /** Feet out of the picture. */
+  noFeet?: boolean;
+  /** Feet moved by this much (walking). */
+  feetDx?: number;
+}
+
+/**
+ * Squat filmed from the side (d = 0 standing .. 1 thighs about parallel). The foot stays
+ * planted at (0.5, 0.9); the knee goes forward, the hips back and down, the torso leans.
+ */
+function squatPose(d: number, o: SquatOpts = {}): Landmark[] {
   const lm = blank();
-  const set = (i: number, x: number, y: number) => (lm[i] = { x, y, visibility: 1 });
-  for (const [h, k, a] of [
-    [23, 25, 27],
-    [24, 26, 28],
+  const zoom = o.zoom ?? 1;
+  const shift = o.shift ?? { x: 0, y: 0 };
+  const n = () => (Math.random() - 0.5) * 2 * (o.noise ?? 0);
+  const set = (i: number, x: number, y: number, v = 1) =>
+    (lm[i] = { x: 0.5 + (x - 0.5) * zoom + shift.x + n(), y: 0.6 + (y - 0.6) * zoom + shift.y + n(), visibility: v });
+  const ankle = { x: 0.5 + (o.feetDx ?? 0), y: 0.9 };
+  const shinTilt = rad(38 * d);
+  const kneeAngle = rad(176 - 110 * d);
+  const knee = { x: ankle.x + 0.2 * Math.sin(shinTilt), y: ankle.y - 0.2 * Math.cos(shinTilt) };
+  // Thigh: the shin direction (knee -> ankle) turned by the knee angle, toward up-and-back.
+  const u = { x: (ankle.x - knee.x) / 0.2, y: (ankle.y - knee.y) / 0.2 };
+  const turn = (t: number) => ({ x: u.x * Math.cos(t) - u.y * Math.sin(t), y: u.x * Math.sin(t) + u.y * Math.cos(t) });
+  const a1 = turn(kneeAngle);
+  const a2 = turn(-kneeAngle);
+  const thigh = a1.y < a2.y ? a1 : a2;
+  const hip = { x: knee.x + 0.2 * thigh.x, y: knee.y + 0.2 * thigh.y };
+  const lean = rad(45 * d);
+  const shoulder = { x: hip.x + 0.28 * Math.sin(lean), y: hip.y - 0.28 * Math.cos(lean) };
+  // Near side clear, far side hidden behind the body.
+  for (const [s, h, k, a, v] of [
+    [11, 23, 25, 27, 1],
+    [12, 24, 26, 28, 0.3],
   ]) {
-    set(h, 0.5, 0.4);
-    set(k, 0.5, 0.6);
-    set(a, 0.5 + 0.2 * Math.sin(rad(kneeDeg)), 0.6 - 0.2 * Math.cos(rad(kneeDeg)));
+    set(s, shoulder.x, shoulder.y, v);
+    set(h, hip.x, hip.y, v);
+    set(k, knee.x, knee.y, v);
+    set(a, ankle.x, ankle.y, o.noFeet ? 0.1 : v);
   }
+  set(0, shoulder.x + 0.04, shoulder.y - 0.07);
+  return lm;
+}
+
+/**
+ * Squat filmed from the front by a phone a few steps away (d = 0 standing .. 1 thighs about
+ * parallel). Feet planted; the hips come down toward them (hips-to-ankles gap 2.1 -> 0.9
+ * shoulder widths); leaning forward brings the shoulders closer to the phone (wider).
+ */
+function frontSquatPose(d: number, o: SquatOpts = {}): Landmark[] {
+  const lm = blank();
+  const zoom = o.zoom ?? 1;
+  const shift = o.shift ?? { x: 0, y: 0 };
+  const n = () => (Math.random() - 0.5) * 2 * (o.noise ?? 0);
+  const set = (i: number, x: number, y: number, v = 1) =>
+    (lm[i] = { x: 0.5 + (x - 0.5) * zoom + shift.x + n(), y: 0.8 + (y - 0.8) * zoom + shift.y + n(), visibility: v });
+  const W = 0.2;
+  const ankleY = 1.2;
+  const hipY = ankleY - (2.1 - 1.2 * d) * W;
+  const shoulderW = W * (1 + 0.12 * d);
+  const shoulderY = hipY - 1.3 * W * (1 - 0.35 * d);
+  for (const [s, h, k, a, dir] of [
+    [11, 23, 25, 27, -1],
+    [12, 24, 26, 28, 1],
+  ]) {
+    set(s, 0.5 + (dir * shoulderW) / 2, shoulderY);
+    set(h, 0.5 + dir * 0.07, hipY);
+    set(k, 0.5 + dir * (0.08 + 0.04 * d), hipY + (ankleY - hipY) * (0.5 - 0.15 * d));
+    set(a, 0.5 + dir * 0.09 + (o.feetDx ?? 0), ankleY, o.noFeet ? 0.1 : 0.95);
+  }
+  set(0, 0.5, shoulderY - 0.35 * W);
   return lm;
 }
 
@@ -280,7 +346,7 @@ describe('pose measurement', () => {
     const bottom = measure(frontPose(1), 'pushup');
     expect(top.view).toBe('front');
     expect(top.valid).toBe(true);
-    expect(top.plank).toBe(true);
+    expect(top.startPose).toBe(true);
     expect(top.depth!).toBeCloseTo(1.35, 1);
     expect(bottom.depth!).toBeCloseTo(0.25, 1);
   });
@@ -295,12 +361,12 @@ describe('pose measurement', () => {
     expect(m.hint).toBe('show-hands');
   });
   it('does not take a standing or sitting body for a plank', () => {
-    expect(measure(frontPose(0, { upright: true }), 'pushup').plank).toBe(false);
+    expect(measure(frontPose(0, { upright: true }), 'pushup').startPose).toBe(false);
   });
   it('keeps the side view for side-on push-ups', () => {
     const m = measure(pushupPose(170), 'pushup');
     expect(m.view).toBe('side');
-    expect(m.plank).toBe(true);
+    expect(m.startPose).toBe(true);
   });
   it('measures the elbow angle', () => {
     expect(measure(pushupPose(170), 'pushup').angle).toBeCloseTo(170, 0);
@@ -496,10 +562,93 @@ describe('RepCounter: push-ups from the side, squats', () => {
     expect(c.reps).toBe(0);
   });
 
-  it('counts squats by knee angle', () => {
+});
+
+/** Squat keyframes: stand still, then `n` squats down to `depth` (0..1). */
+const squatSet = (n: number, depth = 1) => [0, 0, 0, ...Array.from({ length: n }, () => [depth, 0]).flat(), 0];
+
+describe('squats', () => {
+  it('measures the hips-to-feet gap from the front and the side', () => {
+    const top = measure(frontSquatPose(0), 'squat');
+    const bottom = measure(frontSquatPose(1), 'squat');
+    expect(top.view).toBe('front');
+    expect(top.startPose).toBe(true);
+    expect(top.depth!).toBeCloseTo(2.1, 1);
+    expect(bottom.depth!).toBeLessThan(1);
+    const side = measure(squatPose(0), 'squat');
+    expect(side.view).toBe('side');
+    expect(side.startPose).toBe(true);
+    expect(side.depth!).toBeGreaterThan(0.9);
+    expect(measure(squatPose(1), 'squat').depth!).toBeLessThan(0.65);
+  });
+
+  it('asks to step back when the feet are out of the picture', () => {
+    const m = measure(frontSquatPose(0, { noFeet: true }), 'squat');
+    expect(m.valid).toBe(false);
+    expect(m.hint).toBe('show-legs');
+  });
+
+  it('counts squats from the front after standing still', () => {
     const c = new RepCounter('squat');
-    play(c, squatPose, [178, 178, 90, 175, 95, 170, 170]);
+    play(c, (d) => frontSquatPose(d), squatSet(5), 700);
+    expect(c.reps).toBe(5);
+  });
+
+  it('counts squats from the side', () => {
+    const c = new RepCounter('squat');
+    play(c, (d) => squatPose(d), squatSet(5), 700);
+    expect(c.reps).toBe(5);
+  });
+
+  it('counts with jittery joints and never while standing still', () => {
+    const c = new RepCounter('squat');
+    play(c, (d) => frontSquatPose(d, { noise: 0.01 }), squatSet(6), 700);
+    expect(c.reps).toBe(6);
+    const still = new RepCounter('squat');
+    play(still, (d) => frontSquatPose(d, { noise: 0.01 }), Array.from({ length: 60 }, (_, i) => (i % 2 ? 0 : 0.1)), 150);
+    expect(still.reps).toBe(0);
+  });
+
+  it('does not count half squats', () => {
+    const front = new RepCounter('squat');
+    play(front, (d) => frontSquatPose(d), squatSet(5, 0.45), 700);
+    expect(front.reps).toBe(0);
+    const side = new RepCounter('squat');
+    play(side, (d) => squatPose(d), squatSet(5, 0.45), 700);
+    expect(side.reps).toBe(0);
+  });
+
+  it('never counts while walking toward the phone', () => {
+    const c = new RepCounter('squat');
+    let t = 0;
+    for (let i = 0; i < 300; i++) {
+      t += 50;
+      // Each step bends a knee and the feet move; the picture grows as the person comes closer.
+      c.update(frontSquatPose(0.3 * Math.abs(Math.sin(i / 4)), { feetDx: 0.02 * Math.sin(i / 3), zoom: 1 + i / 600 }), t);
+    }
+    expect(c.reps).toBe(0);
+  });
+
+  it('never counts when the phone moves while the person stands', () => {
+    const c = new RepCounter('squat');
+    let t = 0;
+    for (let i = 0; i < 400; i++) {
+      t += 50;
+      const k = i / 8;
+      c.update(frontSquatPose(0, { shift: { x: 0.1 * Math.sin(k), y: 0.25 * Math.sin(k * 1.7) }, zoom: 1 + 0.35 * Math.sin(k * 0.9) }), t);
+    }
+    expect(c.reps).toBe(0);
+  });
+
+  it('pauses when the feet move (walked away), then counts again after standing still', () => {
+    const c = new RepCounter('squat');
+    let { t } = play(c, (d) => frontSquatPose(d), squatSet(2), 700);
     expect(c.reps).toBe(2);
+    // Walk sideways a step while bending the knees.
+    t = play(c, (d) => frontSquatPose(d, { feetDx: 0.3 * Math.min(1, d * 2) }), [0, 1, 0.5], 700, t).t;
+    t = play(c, (d) => frontSquatPose(d, { feetDx: 0.15 }), [0.5, 0], 700, t).t;
+    play(c, (d) => frontSquatPose(d, { feetDx: 0.15 }), squatSet(2), 700, t);
+    expect(c.reps).toBe(4);
   });
 });
 

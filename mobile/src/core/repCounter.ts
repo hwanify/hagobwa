@@ -18,7 +18,7 @@ export interface Point {
 
 export type Phase = 'up' | 'down';
 export type Side = 'left' | 'right';
-export type Hint = '' | 'show-arms' | 'show-hands' | 'show-head' | 'show-legs' | 'straighten' | 'no-person' | 'get-ready';
+export type Hint = '' | 'show-arms' | 'show-hands' | 'show-head' | 'show-legs' | 'straighten' | 'no-person' | 'get-ready' | 'stand-ready';
 
 export interface Measurement {
   /** Main joint angle: elbow (push-up) or knee (squat). */
@@ -26,21 +26,21 @@ export interface Measurement {
   /**
    * Depth signal, large at the top and small at the bottom.
    * Push-up: how far the hands are below the shoulders, over shoulder width (front) or arm length (side).
-   * Squat: hip-to-ankle height over leg length.
+   * Squat: how far the feet are below the hips, over shoulder width (front) or leg length (side).
    */
   depth: number | null;
   /** false when the body isn't measurable or the form is bad (e.g. sagging hips). */
   valid: boolean;
-  /** Push-up camera position: 'front' = phone standing in front of the head, 'side' = beside the body. */
+  /** Camera position: 'front' = phone facing the person, 'side' = beside the body. */
   view?: 'side' | 'front';
   hint: Hint;
-  /** Push-up: body size on screen (shoulder width from the front, arm length from the side). */
+  /** Body size on screen (shoulder width from the front; arm or leg length from the side). */
   scale?: number;
-  /** Push-up: the wrists (planted hands) per visible side. */
-  hands?: Partial<Record<Side, Point>>;
-  /** Push-up: looks like a plank (hands on the floor below the shoulders, body not upright). */
-  plank?: boolean;
-  /** Push-up from the front: each visible arm's shoulders-to-hand gap (x shoulder width). */
+  /** What stays planted during a rep, per visible side: wrists (push-up) or ankles (squat). */
+  planted?: Partial<Record<Side, Point>>;
+  /** In the start position: a plank (push-up) or standing straight (squat). */
+  startPose?: boolean;
+  /** Each visible side's gap (shoulder to hand / hip to foot), over `scale`. */
   gaps?: Partial<Record<Side, number>>;
   /** Push-up: body upright (standing or sitting), which never happens during a push-up. */
   upright?: boolean;
@@ -52,7 +52,7 @@ export interface RepUpdate extends Measurement {
   reps: number;
   /** 0 = bottom of the rep, 1 = top. */
   progress: number | null;
-  /** Push-up: a set is running (got into position, hands still planted). Squats are always ready. */
+  /** A set is running: got into the start position, and the hands (push-up) or feet (squat) stay put. */
   ready: boolean;
 }
 
@@ -86,29 +86,16 @@ export const MIN_REP_MS = 450;
 /** Forget the locked body side after this long without seeing it. */
 const SIDE_LOST_MS = 1500;
 const VIS = 0.5;
-/** Hands need a clearer view: they are what keeps the count honest. */
+/** Hands and feet need a clearer view: they are what keeps the count honest. */
 const HAND_VIS = 0.6;
 
-// Push-up set rules
-/** Hands planted and still in a plank this long before counting starts. */
+// Set rules (shared by push-ups and squats; what differs is in RULES below)
+/** Hands/feet planted and still in the start position this long before counting starts. */
 const READY_MS = 400;
-/** While getting ready the hands may wobble this much (x body scale). */
+/** While getting ready the hands/feet may wobble this much (x body scale). */
 const HOLD_HANDS_TOL = 0.15;
-/** Once counting, hands moving farther than this (x body scale) means the phone or the person moved: pause. */
-const PLANTED_TOL: Record<'front' | 'side', number> = { front: 0.5, side: 0.4 };
 /** Out of sight this long ends the set (it restarts by getting into position again). */
 const LOST_MS = 1500;
-/**
- * Front view: hands at least this far below the shoulders (x shoulder width) = arms straight.
- * A real push-up from a phone on the floor goes from ~1.2-1.5 at the top to ~0.15-0.3 at the bottom.
- */
-const FRONT_EXTENDED = 0.85;
-/**
- * Front view progress is the hands-to-shoulders gap as a fraction of the top gap.
- * The bottom counts below 55% of the top (a half push-up stays around 70%),
- * the top counts again above 80%.
- */
-const frontProgress = (frac: number) => Math.min(1, Math.max(0, 2 * frac - 0.8));
 
 // MediaPipe Pose indices
 const NOSE = 0;
@@ -168,13 +155,9 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
     return m;
   }
 
-  const d = joints(lm, side ?? bestSide(lm, exercise));
-  if (vis(d.h) < VIS || vis(d.k) < VIS || vis(d.a) < VIS) {
-    return { angle: null, depth: null, valid: false, hint: 'show-legs' };
-  }
-  const leg = dist(d.h, d.k) + dist(d.k, d.a);
-  const depth = leg > 0 ? (d.a.y - d.h.y) / leg : null;
-  return { angle: angleAt(d.h, d.k, d.a), depth, valid: true, hint: '' };
+  if (view === 'front') return frontSquat(lm, true) ?? { angle: null, depth: null, valid: false, hint: 'show-legs', view: 'front' };
+  const front = view === 'side' ? null : frontSquat(lm);
+  return front ?? sideSquat(lm, side ?? bestSide(lm, exercise));
 }
 
 /** Shoulder width counts as "wide" (camera in front) at this fraction of the upper arm. */
@@ -209,13 +192,13 @@ function frontPushup(lm: Landmark[], forced = false): Measurement | null {
     const cut = L.s.y < 0.03 || R.s.y < 0.03;
     return { angle: null, depth: null, valid: false, hint: cut ? 'show-head' : 'show-hands', view: 'front', scale: width };
   }
-  const hands: Partial<Record<Side, Point>> = {};
+  const planted: Partial<Record<Side, Point>> = {};
   const gaps: Partial<Record<Side, number>> = {};
   let gap = 0;
   let angle = 0;
   let angles = 0;
   for (const [side, a] of arms) {
-    hands[side] = { x: a.w.x, y: a.w.y };
+    planted[side] = { x: a.w.x, y: a.w.y };
     gap += a.w.y - a.s.y;
     gaps[side] = (a.w.y - a.s.y) / width;
     if (vis(a.e) >= VIS) {
@@ -238,8 +221,8 @@ function frontPushup(lm: Landmark[], forced = false): Measurement | null {
   const upright = legsShow ? (L.k.y + R.k.y - L.h.y - R.h.y) / 2 > 0.7 * width : noseAbove > 0.7;
   // Plank: both hands on the floor (level) below the shoulders, not upright. True all through
   // a rep; whether the arms were straight is checked when a set starts.
-  const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.1 && !upright;
-  return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps, upright };
+  const startPose = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.1 && !upright;
+  return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, planted, startPose, gaps, upright };
 }
 
 /** Push-up filmed from the side: elbow angle plus how far the hand is below the shoulder. */
@@ -251,24 +234,97 @@ function sidePushup(lm: Landmark[], side: Side): Measurement {
   const angle = angleAt(d.s, d.e, d.w);
   const arm = dist(d.s, d.e) + dist(d.e, d.w);
   const depth = arm > 0 ? (d.w.y - d.s.y) / arm : null;
-  const base = { angle, depth, view: 'side' as const, scale: arm, hands: { [side]: { x: d.w.x, y: d.w.y } } };
+  const base = { angle, depth, view: 'side' as const, scale: arm, planted: { [side]: { x: d.w.x, y: d.w.y } } };
   const end = vis(d.a) > VIS ? d.a : d.k;
   if (vis(d.h) > VIS && vis(end) > VIS && angleAt(d.s, d.h, end) < 140) {
     return { ...base, valid: false, hint: 'straighten' };
   }
   // Plank: hand below the shoulder, and the torso closer to flat than upright (if the hip shows).
   const flat = vis(d.h) <= VIS || Math.abs(d.h.y - d.s.y) <= 0.7 * Math.abs(d.h.x - d.s.x);
-  const plank = depth !== null && depth >= 0.3 && flat;
+  const startPose = depth !== null && depth >= 0.3 && flat;
   const upright = vis(d.h) > VIS && Math.abs(d.h.y - d.s.y) > 1.5 * Math.abs(d.h.x - d.s.x);
-  return { ...base, valid: true, hint: '', plank, upright };
+  return { ...base, valid: true, hint: '', startPose, upright, gaps: depth !== null ? { [side]: depth } : undefined };
+}
+
+const mid = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/**
+ * Squat with the phone standing a few steps in front, the whole body in the picture.
+ *
+ * The feet stay planted while the hips come down to them, so the count is the vertical gap from
+ * hips to ankles. RepCounter measures it against the body size at the start of the set: leaning
+ * forward at the bottom brings the shoulders closer to the phone, which would otherwise make
+ * every squat look deeper. Moving or zooming the phone moves hips and feet alike.
+ */
+function frontSquat(lm: Landmark[], forced = false): Measurement | null {
+  const L = joints(lm, 'left');
+  const R = joints(lm, 'right');
+  if (vis(L.h) < VIS || vis(R.h) < VIS) return null;
+  const shouldersShow = vis(L.s) >= VIS && vis(R.s) >= VIS;
+  const shoulderW = shouldersShow ? dist(L.s, R.s) : 0;
+  const hipW = dist(L.h, R.h);
+  const hips = mid(L.h, R.h);
+  const torso = shouldersShow ? dist(mid(L.s, R.s), hips) : 0;
+  const thigh = Math.max(vis(L.k) >= VIS ? dist(L.h, L.k) : 0, vis(R.k) >= VIS ? dist(R.h, R.k) : 0);
+  // Facing the phone: shoulders wide next to the torso, or hips wide next to the thighs. From the
+  // side both pairs stack up behind each other.
+  const wide = (torso > 0 && shoulderW >= 0.45 * torso) || (thigh > 0 && hipW >= 0.45 * thigh);
+  if (!wide && !forced) return null;
+  // Shoulder width, or the hips (about 0.7 of it) when the shoulders are out of the picture.
+  const scale = shoulderW > 0 ? shoulderW : hipW * 1.4;
+  if (scale <= 0) return null;
+  const legs = (['left', 'right'] as const).map((side) => [side, side === 'left' ? L : R] as const).filter(([, j]) => vis(j.a) >= HAND_VIS);
+  if (legs.length === 0) return { angle: null, depth: null, valid: false, hint: 'show-legs', view: 'front', scale };
+  const planted: Partial<Record<Side, Point>> = {};
+  const gaps: Partial<Record<Side, number>> = {};
+  let gap = 0;
+  let angle = 0;
+  let angles = 0;
+  for (const [side, j] of legs) {
+    planted[side] = { x: j.a.x, y: j.a.y };
+    gaps[side] = (j.a.y - j.h.y) / scale;
+    gap += gaps[side]!;
+    if (vis(j.k) >= VIS) {
+      angle += angleAt(j.h, j.k, j.a);
+      angles++;
+    }
+  }
+  const depth = gap / legs.length;
+  // Feet far above the hips or miles below: a broken frame, not a body.
+  if (depth < -0.5 || depth > 6) return { angle: null, depth: null, valid: false, hint: '', view: 'front', scale };
+  // Standing: both feet down (level), knees between hips and feet, hips well above the feet and
+  // the shoulders above the hips. Whether the legs were straight is checked when a set starts.
+  const standing =
+    legs.length === 2 &&
+    Math.abs(L.a.y - R.a.y) <= 0.35 * scale &&
+    depth >= 0.5 &&
+    [L, R].every((j) => vis(j.k) >= VIS && j.k.y > j.h.y && j.k.y < j.a.y) &&
+    (!shouldersShow || mid(L.s, R.s).y < hips.y - 0.5 * scale);
+  return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale, planted, startPose: standing, gaps };
+}
+
+/** Squat filmed from the side: hips come down to the planted foot; knee angle for display. */
+function sideSquat(lm: Landmark[], side: Side): Measurement {
+  const d = joints(lm, side);
+  if (vis(d.h) < VIS || vis(d.k) < VIS || vis(d.a) < HAND_VIS) {
+    return { angle: null, depth: null, valid: false, hint: 'show-legs', view: 'side' };
+  }
+  const leg = dist(d.h, d.k) + dist(d.k, d.a);
+  if (leg <= 0) return { angle: null, depth: null, valid: false, hint: 'show-legs', view: 'side' };
+  const angle = angleAt(d.h, d.k, d.a);
+  const depth = (d.a.y - d.h.y) / leg;
+  if (depth < -0.5 || depth > 1.5) return { angle: null, depth: null, valid: false, hint: '', view: 'side', scale: leg };
+  // Standing: hip above the foot over a mostly straight leg, shoulder above the hip (if seen).
+  const standing = depth >= 0.5 && (vis(d.s) < VIS || d.s.y < d.h.y - 0.25 * leg);
+  return { angle, depth, valid: true, hint: '', view: 'side', scale: leg, planted: { [side]: { x: d.a.x, y: d.a.y } }, startPose: standing, gaps: { [side]: depth } };
 }
 
 /**
- * Largest move of a hand seen in both, or Infinity if no hand is shared. MediaPipe sometimes
- * swaps left and right for a few frames (seen at the bottom of reps from a raised phone), so
- * with both hands the better of the two pairings counts: the hands didn't move, only the labels.
+ * Largest move of a planted hand/foot seen in both, or Infinity if none is shared. MediaPipe
+ * sometimes swaps left and right for a few frames (seen at the bottom of reps from a raised
+ * phone), so with both the better of the two pairings counts: nothing moved, only the labels.
  */
-function handsMoved(a: Partial<Record<Side, Point>>, b: Partial<Record<Side, Point>>): number {
+function plantedMoved(a: Partial<Record<Side, Point>>, b: Partial<Record<Side, Point>>): number {
   if (a.left && a.right && b.left && b.right) {
     const same = Math.max(dist(a.left, b.left), dist(a.right, b.right));
     const swapped = Math.max(dist(a.left, b.right), dist(a.right, b.left));
@@ -397,15 +453,15 @@ function nextState(state: State, progress: number): State {
 
 interface Hold {
   start: number;
-  /** Where the hands were planted when the hold began. */
-  hands: Partial<Record<Side, Point>>;
-  /** Latest hands seen (both, once a front frame showed both). */
+  /** Where the hands/feet were planted when the hold began. */
+  planted: Partial<Record<Side, Point>>;
+  /** Latest planted points seen (both, once a front frame showed both). */
   last: Partial<Record<Side, Point>>;
   /** How many frames read as each camera view: the set takes the majority. */
   views: Record<'front' | 'side', number>;
   /** Latest body scale per view. */
   scale: Partial<Record<'front' | 'side', number>>;
-  /** Frames in a row that broke the hold (not a plank / hands moved); a few are forgiven. */
+  /** Frames in a row that broke the hold (not in position / moved); a few are forgiven. */
   misses: number;
 }
 
@@ -426,38 +482,80 @@ class Median3 {
 
 /** A hold survives this many bad frames in a row (one dropped or glitchy frame shouldn't restart it). */
 const HOLD_MISSES = 3;
-/** The set pauses when the hands are off their spot in this many of the last DRIFT_WINDOW frames. */
+/** The set pauses when the hands/feet are off their spot in this many of the last DRIFT_WINDOW frames. */
 const DRIFT_FRAMES = 4;
 const DRIFT_WINDOW = 6;
 /** Through dropouts this short the last reading holds, so a rep that just reached the top still counts. */
 const HOLD_GAP_MS = 300;
 /**
- * The hands' spot follows them this slowly (s). A phone that slides or a slowly panning camera
- * is fine; a bump, a pick-up or a lifted hand is faster than this and pauses the set.
+ * The planted spot follows the hands/feet this slowly (s). A phone that slides or a slowly
+ * panning camera is fine; a bump, a pick-up or a lifted hand/foot is faster and pauses the set.
  */
 const ANCHOR_TAU = 1;
-/** Upright (head above the shoulders / torso vertical) this many frames in a row ends the set. */
+/** Push-up: upright (standing/sitting) this many frames in a row ends the set. */
 const UPRIGHT_FRAMES = 8;
-/** A new front-view set takes its top from this much recent history (it may start mid-rep). */
+/** A new set takes its top from this much recent history (it may start mid-rep). */
 const RECENT_MS = 1500;
-/**
- * Front view: if someone comes back up to at least this fraction of the set's top and goes down
- * again, the top was set too high (e.g. while getting into position from higher up): that rep
- * counts and its peak becomes the new top. The peak must still be straight arms
- * (FRONT_EXTENDED), so short pulses near the bottom never re-top, and the 55% bottom rule
- * applies to the new top.
- */
-const RETOP_FRAC = 0.6;
+
+/** What differs between push-ups and squats; the set logic is shared. */
+interface SetRules {
+  /**
+   * Smallest top gap (x scale) that counts as arms straight / standing tall, per camera view.
+   * Push-up front: ~1.2-1.5 at the top. Squat front: ~1.8-2.3 standing (hips to ankles over
+   * shoulder width), side: ~0.95 (over leg length).
+   */
+  extended: Record<'front' | 'side', number>;
+  /** Progress (0 bottom .. 1 top) from the gap as a fraction of the set's top. */
+  progress: (frac: number) => number;
+  /**
+   * Came back up to at least this fraction of the top and went down again: the top was set
+   * too high (e.g. while getting into position). That rep counts and its peak becomes the top.
+   */
+  retopFrac: number;
+  /** Planted hands/feet moving farther than this (x scale) pause the set. */
+  plantedTol: Record<'front' | 'side', number>;
+  /** Shown while waiting for the start position. */
+  readyHint: Hint;
+  /**
+   * Measure the gap against the body size at the start of the set (updated only while at the
+   * top) instead of each frame's: in a squat the shoulders lean toward the phone at the bottom.
+   */
+  fixedScale: boolean;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+const RULES: Record<ExerciseId, SetRules> = {
+  pushup: {
+    extended: { front: 0.85, side: 0.3 },
+    // Bottom below 55% of the top (a half push-up stays around 70%), top again above 80%.
+    progress: (frac) => clamp01(2 * frac - 0.8),
+    retopFrac: 0.6,
+    plantedTol: { front: 0.5, side: 0.4 },
+    readyHint: 'get-ready',
+    fixedScale: false,
+  },
+  squat: {
+    extended: { front: 1.2, side: 0.8 },
+    // Bottom below 68% of the standing gap (thighs about parallel ~45-50%, a half squat ~75%),
+    // top again above 90%.
+    progress: (frac) => clamp01((frac - 0.548) / 0.44),
+    retopFrac: 0.8,
+    plantedTol: { front: 0.6, side: 0.5 },
+    readyHint: 'stand-ready',
+    fixedScale: true,
+  },
+};
 
 /**
- * Counts reps from a stream of pose frames.
+ * Counts reps from a stream of pose frames, in sets.
  *
- * Push-ups run in sets: counting starts once the person is in a plank with the hands planted
- * and still (READY_MS), and pauses when the hands move in the picture (phone moved, person got
- * up) or the body is out of sight for LOST_MS. Carrying the phone around therefore never counts.
- * Front view: the shoulders-to-hands gap as a fraction of the gap at the top.
- * Side view: elbow angle (plus depth once it shows a real range) against the person's own range.
- * Squats: knee angle against the person's own range, always counting.
+ * Counting starts once the person holds the start position (push-up: plank; squat: standing)
+ * with the hands/feet planted and still for READY_MS, and pauses when those move in the picture
+ * (phone moved, person got up or walked) or the body is out of sight for LOST_MS. Carrying the
+ * phone around or getting into position therefore never counts.
+ * Signal: the gap from shoulders to hands (push-up) or hips to feet (squat) as a fraction of
+ * the set's top; push-ups from the side use the elbow angle against the person's own range.
  * Then a 4-state machine with hysteresis; each change must hold for CONFIRM_FRAMES frames.
  */
 export class RepCounter {
@@ -474,19 +572,21 @@ export class RepCounter {
   /** Spike-free copies of the angle and depth for learning the range (progress uses the unclipped values). */
   private angleMedian = new Median3();
   private depthMedian = new Median3();
-  /** Left minus right gap while both hands show, to keep the gap steady when one drops out. */
+  /** Left minus right gap while both sides show, to keep the gap steady when one drops out. */
   private gapSkew = 0;
   private angleRange: AdaptiveRange;
   private depthRange = new AdaptiveRange({ top: 1, bottom: 0.5 }, MIN_DEPTH_RANGE);
   private depthSpan = { min: Infinity, max: -Infinity };
   private pending: State | null = null;
   private pendingFrames = 0;
-  // push-up set
+  // set
   private ready = false;
   private hold: Hold | null = null;
   private setView: 'front' | 'side' = 'front';
   private anchor: Partial<Record<Side, Point>> = {};
   private anchorScale = 1;
+  /** fixedScale exercises: body size the gap is measured against (from the top of the set). */
+  private refScale = 1;
   private top = 1;
   private topCap = 1;
   private lostSince: number | null = null;
@@ -494,9 +594,9 @@ export class RepCounter {
   private lastProgress: number | null = null;
   private lastUsableAt = -Infinity;
   private uprightFrames = 0;
-  /** Front-view gaps of the last moments (kept across holds): the top of a new set comes from here. */
+  /** Start-position gaps of the last moments (kept across holds): the top of a new set comes from here. */
   private recentGaps: { t: number; v: number }[] = [];
-  /** Front view: highest gap since the last bottom. */
+  /** Highest gap since the last bottom. */
   private peakSinceBottom = 0;
 
   constructor(private exercise: ExerciseId) {
@@ -562,18 +662,14 @@ export class RepCounter {
       this.side = best;
     } else if (best !== this.side && sideScore(lm, this.exercise, this.side) < 3 * VIS) {
       if (nowMs - this.sideSeenAt > SIDE_LOST_MS) {
-        // From the front both arms count, so the side only matters for side-view sets.
-        if (this.exercise !== 'pushup' || this.setView === 'side') this.endSet();
+        // From the front both sides count, so the side only matters for side-view sets.
+        if (this.ready && this.setView === 'side') this.endSet();
         this.side = best;
       }
       return this.side;
     }
     this.sideSeenAt = nowMs;
     return this.side;
-  }
-
-  update(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
-    return this.exercise === 'pushup' ? this.updatePushup(lm, nowMs) : this.updateSquat(lm, nowMs);
   }
 
   /** Feed one progress value through the state machine; true when a rep just completed. */
@@ -603,7 +699,7 @@ export class RepCounter {
     return this.state === 'down' || this.state === 'goingUp' ? 'down' : 'up';
   }
 
-  /** Side-view progress from the elbow angle (and depth once it moves like a rep). */
+  /** Push-ups from the side: progress from the elbow angle (and depth once it moves like a rep). */
   private angleProgress(m: Measurement, nowMs: number, dt: number): number | null {
     if (m.angle === null) return null;
     const angle = this.angleFilter.filter(m.angle, nowMs);
@@ -624,8 +720,8 @@ export class RepCounter {
     return progress;
   }
 
-  /** Front-view gap from both arms, or from one arm corrected by the usual left-right difference. */
-  private frontGap(m: Measurement): number {
+  /** The gap from both sides, or from one corrected by the usual left-right difference. */
+  private sidesGap(m: Measurement): number {
     const l = m.gaps?.left;
     const r = m.gaps?.right;
     if (l !== undefined && r !== undefined) {
@@ -637,9 +733,10 @@ export class RepCounter {
     return m.depth ?? 0;
   }
 
-  private updatePushup(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
+  update(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
+    const rules = RULES[this.exercise];
     // A running set keeps its camera view; see measure().
-    const m = measure(lm, 'pushup', this.pickSide(lm, nowMs), this.ready ? this.setView : undefined);
+    const m = measure(lm, this.exercise, this.pickSide(lm, nowMs), this.ready ? this.setView : undefined);
     const out = (progress: number | null, repCompleted: boolean, hint = m.hint): RepUpdate => ({
       ...m,
       hint,
@@ -650,11 +747,12 @@ export class RepCounter {
       ready: this.ready,
     });
 
-    // The phone really moving to another spot shows as moving hands (see below) or a lost body.
-    // From the front the shoulders only get wider as the body comes down: a frame where they
-    // collapse to half the width is MediaPipe stacking both shoulders on one spot. Skip it.
-    const collapsed = this.ready && m.view === 'front' && m.scale !== undefined && m.scale < 0.55 * this.anchorScale;
-    const usable = !collapsed && m.valid && m.depth !== null && m.scale !== undefined && m.hands !== undefined && m.view !== undefined;
+    // The phone really moving to another spot shows as moving hands/feet (see below) or a lost
+    // body. Push-ups from the front: the shoulders only get wider as the body comes down, so a
+    // frame where they collapse to half the width is MediaPipe stacking both on one spot. Skip it.
+    const collapsed =
+      this.ready && this.exercise === 'pushup' && m.view === 'front' && m.scale !== undefined && m.scale < 0.55 * this.anchorScale;
+    const usable = !collapsed && m.valid && m.depth !== null && m.scale !== undefined && m.planted !== undefined && m.view !== undefined;
     if (!usable) {
       if (this.hold && ++this.hold.misses > HOLD_MISSES) this.hold = null;
       let repCompleted = false;
@@ -665,69 +763,75 @@ export class RepCounter {
           repCompleted = this.step(this.lastProgress, nowMs);
         }
       }
-      return out(null, repCompleted, m.hint || (this.ready ? '' : 'get-ready'));
+      return out(null, repCompleted, m.hint || (this.ready ? '' : rules.readyHint));
     }
     this.lostSince = null;
     const view = m.view!;
-    const hands = m.hands!;
+    const planted = m.planted!;
     const scale = m.scale!;
+    // Push-ups from the side go by the elbow angle; everything else by the gap.
+    const byGap = this.exercise === 'squat' || view === 'front';
 
     const dt = this.lastT === null ? 0 : Math.max(0, (nowMs - this.lastT) / 1000);
     this.lastT = nowMs;
-    const gap = view === 'front' ? this.gapFilter.filter(this.gapMedian.push(this.frontGap(m)), nowMs) : 0;
-    if (view === 'front') {
-      // Only plank frames: getting into position (kneeling, body still high) would inflate it.
-      if (m.plank) this.recentGaps.push({ t: nowMs, v: gap });
+    // fixedScale: the gap against the set's body size (before a set starts, this frame's).
+    const toRef = rules.fixedScale && this.ready ? scale / this.refScale : 1;
+    const gap = byGap ? this.gapFilter.filter(this.gapMedian.push(this.sidesGap(m) * toRef), nowMs) : 0;
+    if (byGap) {
+      // Only start-position frames: getting into position (kneeling, body still high) would inflate it.
+      if (m.startPose) this.recentGaps.push({ t: nowMs, v: gap });
       while (this.recentGaps.length && this.recentGaps[0].t < nowMs - RECENT_MS) this.recentGaps.shift();
     }
-    const sideProgress = view === 'side' ? this.angleProgress(m, nowMs, dt) : null;
+    const sideProgress = byGap ? null : this.angleProgress(m, nowMs, dt);
 
     if (!this.ready) {
-      this.tryStart(m.plank === true, view, hands, scale, gap, nowMs);
-      return out(null, false, m.hint || (this.ready ? '' : 'get-ready'));
+      this.tryStart(m.startPose === true, view, planted, scale, nowMs);
+      return out(null, false, m.hint || (this.ready ? '' : rules.readyHint));
     }
 
-    // Standing or sitting up: the set is over.
-    this.uprightFrames = m.upright ? this.uprightFrames + 1 : 0;
+    // Push-ups: standing or sitting up ends the set.
+    this.uprightFrames = this.exercise === 'pushup' && m.upright ? this.uprightFrames + 1 : 0;
     if (this.uprightFrames >= UPRIGHT_FRAMES) {
       this.endSet();
-      return out(null, false, 'get-ready');
+      return out(null, false, rules.readyHint);
     }
 
-    // Hands are planted: if they jump off their spot, the phone or the person moved. Pause.
+    // Hands/feet are planted: if they jump off their spot, the phone or the person moved. Pause.
     // One glitchy frame can't do it; a real move shows in most of the last few frames.
-    // MediaPipe sometimes stacks both wrists on one hand for a few frames: the hands' spacing
+    // MediaPipe sometimes stacks both wrists/ankles on one spot for a few frames: their spacing
     // collapses, which neither a moved phone nor a person does. Those frames don't vote.
     const a = this.anchor;
-    const stacked =
-      !!(a.left && a.right && hands.left && hands.right) && dist(hands.left!, hands.right!) < 0.4 * dist(a.left!, a.right!);
-    const off = !stacked && handsMoved(hands, a) > PLANTED_TOL[view] * this.anchorScale;
+    const pair = !!(a.left && a.right && planted.left && planted.right);
+    const stacked = pair && dist(planted.left!, planted.right!) < 0.4 * dist(a.left!, a.right!);
+    const off = !stacked && plantedMoved(planted, a) > rules.plantedTol[view] * this.anchorScale;
     if (!stacked) this.drift.push(off);
     if (this.drift.length > DRIFT_WINDOW) this.drift.shift();
     if (this.drift.filter(Boolean).length >= DRIFT_FRAMES) {
       this.endSet();
-      return out(null, false, 'get-ready');
+      return out(null, false, rules.readyHint);
     }
     const swapped =
-      !!(a.left && a.right && hands.left && hands.right) &&
-      Math.max(dist(a.left!, hands.right!), dist(a.right!, hands.left!)) < Math.max(dist(a.left!, hands.left!), dist(a.right!, hands.right!));
+      pair && Math.max(dist(a.left!, planted.right!), dist(a.right!, planted.left!)) < Math.max(dist(a.left!, planted.left!), dist(a.right!, planted.right!));
+    const k = 1 - Math.exp(-dt / ANCHOR_TAU);
     if (!off && !swapped && !stacked) {
       // Slow drift (phone sliding, camera panning) is followed, so it never adds up to a pause.
-      const k = 1 - Math.exp(-dt / ANCHOR_TAU);
       for (const side of ['left', 'right'] as const) {
-        const a = this.anchor[side];
-        const p = hands[side];
-        if (a && p) this.anchor[side] = { x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k };
+        const q = this.anchor[side];
+        const p = planted[side];
+        if (q && p) this.anchor[side] = { x: q.x + (p.x - q.x) * k, y: q.y + (p.y - q.y) * k };
       }
       this.anchorScale += (scale - this.anchorScale) * k;
     }
 
     let progress: number;
-    if (view === 'front') {
-      // Straighter arms than at the start raise the top, gently and capped (frames are already
-      // spike-filtered), so one bad frame can't.
+    if (byGap) {
+      // Straighter arms / taller standing than at the start raise the top, gently and capped
+      // (frames are already spike-filtered), so one bad frame can't.
       if (gap > this.top) this.top = Math.min(this.topCap, this.top + (gap - this.top) * 0.2);
-      progress = frontProgress(gap / this.top);
+      const frac = gap / this.top;
+      // fixedScale: follow a slowly zooming camera, but only while at the top (no squat lean).
+      if (rules.fixedScale && frac >= 0.9 && Math.abs(scale / this.refScale - 1) < 0.25) this.refScale += (scale - this.refScale) * k;
+      progress = rules.progress(frac);
     } else {
       progress = sideProgress ?? 1;
     }
@@ -735,11 +839,11 @@ export class RepCounter {
     this.lastUsableAt = nowMs;
     const before = this.state;
     let repCompleted = this.step(progress, nowMs);
-    if (view === 'front') {
+    if (byGap) {
       if (this.state === 'goingUp') this.peakSinceBottom = Math.max(this.peakSinceBottom, gap);
       // Came up most of the way, then went down again: the top is too high. Count it, re-top.
       const peak = this.peakSinceBottom;
-      if (before === 'goingUp' && this.state === 'down' && peak >= RETOP_FRAC * this.top && peak >= FRONT_EXTENDED) {
+      if (before === 'goingUp' && this.state === 'down' && peak >= rules.retopFrac * this.top && peak >= rules.extended[view]) {
         this.top = peak;
         this.topCap = Math.max(this.topCap, peak * 1.6);
         if (nowMs - this.lastRepAt >= MIN_REP_MS) {
@@ -754,43 +858,47 @@ export class RepCounter {
   }
 
   /**
-   * Start a set once a plank has been held with the hands still for READY_MS. Frames may read
-   * as front or side (a phone at an angle flips between them); the set takes the majority.
+   * Start a set once the start position has been held with the hands/feet still for READY_MS.
+   * Frames may read as front or side (a phone at an angle flips between them); the set takes
+   * the majority.
    */
-  private tryStart(plank: boolean, view: 'front' | 'side', hands: Partial<Record<Side, Point>>, scale: number, gap: number, nowMs: number): void {
+  private tryStart(inPose: boolean, view: 'front' | 'side', planted: Partial<Record<Side, Point>>, scale: number, nowMs: number): void {
+    const rules = RULES[this.exercise];
     const h = this.hold;
-    if (!h || (!plank && ++h.misses > HOLD_MISSES)) {
-      this.hold = plank
-        ? { start: nowMs, hands, last: { ...hands }, views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
+    if (!h || (!inPose && ++h.misses > HOLD_MISSES)) {
+      this.hold = inPose
+        ? { start: nowMs, planted, last: { ...planted }, views: { front: view === 'front' ? 1 : 0, side: view === 'side' ? 1 : 0 }, scale: { [view]: scale }, misses: 0 }
         : null;
       return;
     }
-    if (!plank) return;
-    if (handsMoved(hands, h.hands) > HOLD_HANDS_TOL * scale) {
+    if (!inPose) return;
+    if (plantedMoved(planted, h.planted) > HOLD_HANDS_TOL * scale) {
       if (++h.misses > HOLD_MISSES) this.hold = null;
       return;
     }
     h.misses = 0;
     h.views[view]++;
     h.scale[view] = scale;
-    Object.assign(h.last, hands);
+    Object.assign(h.last, planted);
     if (nowMs - h.start < READY_MS) return;
     const setView = h.views.front >= h.views.side ? 'front' : 'side';
+    const byGap = this.exercise === 'squat' || setView === 'front';
     // Top of the set: 90th percentile of the last 1.5 s, so the set can start mid-rep, while a
     // glitchy frame or two can't set it.
     const sorted = this.recentGaps.map((x) => x.v).sort((a, b) => a - b);
     const top = sorted.length ? sorted[Math.floor(0.9 * (sorted.length - 1))] : 0;
-    // Front view: the arms must have been straight just now, so the top is a real top.
-    if (setView === 'front' && top < FRONT_EXTENDED) return;
+    // The arms/legs must have been straight just now, so the top is a real top.
+    if (byGap && top < rules.extended[setView]) return;
     this.ready = true;
     this.hold = null;
     this.setView = setView;
     this.anchor = h.last;
     this.anchorScale = h.scale[setView] ?? scale;
-    this.top = setView === 'front' ? top : 1;
+    this.refScale = this.anchorScale;
+    this.top = byGap ? top : 1;
     // If the set started mid-rep the top is underestimated: let it grow to the real one.
     this.topCap = this.top * 1.6;
-    if (setView === 'side') {
+    if (!byGap) {
       // Learn the elbow range from this set only, not from getting into position.
       this.angleRange.reset();
       this.depthRange.reset();
@@ -804,27 +912,16 @@ export class RepCounter {
     this.recentGaps = [];
     this.peakSinceBottom = 0;
   }
-
-  private updateSquat(lm: Landmark[] | undefined, nowMs: number): RepUpdate {
-    const m = measure(lm, this.exercise, this.pickSide(lm, nowMs));
-    const dt = this.lastT === null ? 0 : Math.max(0, (nowMs - this.lastT) / 1000);
-    let progress: number | null = null;
-    if (m.angle !== null) {
-      this.lastT = nowMs;
-      progress = this.angleProgress(m, nowMs, dt);
-    }
-    const repCompleted = progress !== null && m.valid ? this.step(progress, nowMs) : false;
-    return { ...m, phase: this.phase(), progress, repCompleted, reps: this.count, ready: true };
-  }
 }
 
 export const HINT_TEXT: Record<Hint, string> = {
   '': '',
   'get-ready': '팔을 펴고 엎드린 자세로 잠깐 멈추면 시작해요',
+  'stand-ready': '발끝까지 보이게 서서 잠깐 멈추면 시작해요',
   'show-hands': '양손이 보이게 폰을 조금 더 멀리 두세요',
   'show-head': '머리가 잘려요. 폰을 조금 더 멀리 두거나 뒤로 기울여 주세요',
   'show-arms': '어깨부터 손목까지 화면에 보이게 해주세요',
-  'show-legs': '엉덩이부터 발목까지 보이게 물러나 주세요',
+  'show-legs': '발끝까지 화면에 보이게 조금 뒤로 물러나 주세요',
   straighten: '허리를 펴고 몸을 일직선으로',
   'no-person': '사람이 안 보여요. 몸이 화면에 들어오게 해주세요',
 };
