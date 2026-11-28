@@ -23,7 +23,7 @@ App Store Connect에 그대로 붙여 넣을 수 있게 정리했어요.
 하고봐는 유튜브·인스타그램·틱톡처럼 자꾸 열게 되는 앱을 잠가 두고, 푸시업이나 스쿼트를 한 만큼만 열어 주는 앱이에요.
 
 ■ 운동하면 시간이 충전돼요
-· 카메라가 푸시업과 스쿼트 횟수를 자동으로 세요
+· 카메라가 푸시업과 스쿼트 횟수를 자동으로 세요 (옆이나 머리 쪽 정면에서)
 · 푸시업 1개 = 1분, 스쿼트 2개 = 1분 (난이도 조절 가능)
 · 영상은 기기 안에서만 분석하고 저장하지 않아요
 
@@ -35,7 +35,7 @@ App Store Connect에 그대로 붙여 넣을 수 있게 정리했어요.
 ■ 꾸준함이 보여요
 · 오늘·이번 주·이번 달 운동 기록
 · 연속 운동 일수
-· 조교, PT쌤, 엄마 목소리 구령
+· "하나, 둘" 구령으로 횟수를 세어 줘요
 
 개인정보를 수집하지 않아요. 광고도 없어요.
 
@@ -45,17 +45,18 @@ App Store Connect에 그대로 붙여 넣을 수 있게 정리했어요.
 ## 심사 메모 (App Review Information → Notes)
 ```
 How to test:
-1. Open the app and finish onboarding: choose a daily goal, then tap the button to allow Screen Time and pick one app to lock (e.g. Safari or any installed app).
+1. Open the app and finish onboarding: choose how much time can be saved up (1-3 hours), then tap the button to allow Screen Time and pick an app to lock (e.g. Safari or any installed app).
 2. Open the locked app: a 하고봐 shield appears ("지금은 잠겨 있어요").
-3. In 하고봐, tap the red center button (workout). Allow camera access.
-   - Place the phone on the floor and do a few push-ups, OR tap "탭으로 1회" (tap to count one rep) a few times if you can't exercise.
+3. In 하고봐, tap the red center button (workout). The camera starts; allow camera access.
+   - Place the phone on the floor, to your side or in front of your head, and do a few push-ups. The app counts them out loud.
+   - If you can't exercise: deny camera access (or turn it off in Settings > 하고봐 > Camera). A "탭으로 1회" (tap to count one rep) button then appears so reps can be counted by hand.
    - Tap "충전하기". Each push-up adds 1 minute (normal difficulty).
-4. The locked app now opens. When the earned minutes are used up, it locks again.
-5. Emergency: on the lock screen tap "비상 5분 열기 (하루 1번)" to open for 5 minutes once a day.
+4. The locked app now opens. When the earned minutes are used up, it locks again, even if 하고봐 is closed.
+5. Emergency: on the lock screen, "비상 5분 열기" opens the apps for 5 minutes, once a day.
 
-Camera frames are processed on-device only and never stored or uploaded.
-The app uses the Family Controls (Distribution) entitlement for individual use (requestAuthorization .individual).
-No login or account is required.
+Camera frames are processed on-device only and are never stored or uploaded.
+The app uses the Family Controls (Distribution) entitlement for individual use (AuthorizationCenter.requestAuthorization(for: .individual)).
+No login or account is required. The app collects no data and has no ads.
 ```
 
 ## 앱 개인정보 보호 (App Privacy)
@@ -65,6 +66,6 @@ No login or account is required.
 ## 스크린샷 (필수: 6.9인치 1320×2868 또는 6.5인치 1284×2778)
 1. 홈 – 남은 시간 링 + "운동하고 충전하기"
 2. 운동 – 카메라로 푸시업 세는 화면
-3. 잠금 화면 – "지금은 잠겨 있어요 · 0분"
+3. 잠금 화면 – "지금은 잠겨 있어요"
 4. 잠금 탭 – 잠근 앱 목록
 5. 기록 – 이번 달 달력
