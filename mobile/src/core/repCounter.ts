@@ -651,8 +651,9 @@ export class RepCounter {
     this.lastT = nowMs;
     const gap = view === 'front' ? this.gapFilter.filter(this.gapMedian.push(this.frontGap(m)), nowMs) : 0;
     if (view === 'front') {
-      this.recentGaps.push({ t: nowMs, v: gap });
-      while (this.recentGaps[0].t < nowMs - RECENT_MS) this.recentGaps.shift();
+      // Only plank frames: getting into position (kneeling, body still high) would inflate it.
+      if (m.plank) this.recentGaps.push({ t: nowMs, v: gap });
+      while (this.recentGaps.length && this.recentGaps[0].t < nowMs - RECENT_MS) this.recentGaps.shift();
     }
     const sideProgress = view === 'side' ? this.angleProgress(m, nowMs, dt) : null;
 
