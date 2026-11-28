@@ -29,4 +29,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add mobile/src/core/__tests__/fixtures/pose-clips.json.gz
           git commit -m "Pose test data from free push-up clips" || exit 0
-          git push
+          # The branch may have moved while this ran: put the data on top of it.
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

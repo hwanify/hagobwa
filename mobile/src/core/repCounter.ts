@@ -155,7 +155,10 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
   if (!lm || lm.length < 29) return { angle: null, depth: null, valid: false, hint: 'no-person' };
 
   if (exercise === 'pushup') {
-    if (view === 'front') return frontPushup(lm, true) ?? { angle: null, depth: null, valid: false, hint: 'show-hands', view: 'front' };
+    if (view === 'front') {
+      const cut = lm[11].y < 0.03 || lm[12].y < 0.03;
+      return frontPushup(lm, true) ?? { angle: null, depth: null, valid: false, hint: cut ? 'show-head' : 'no-person', view: 'front' };
+    }
     const front = view === 'side' ? null : frontPushup(lm);
     if (front) return front;
     const m = sidePushup(lm, side ?? bestSide(lm, exercise));
@@ -224,8 +227,6 @@ function frontPushup(lm: Landmark[], forced = false): Measurement | null {
   // Hands far above the shoulders or miles below: a broken frame, not a body.
   if (depth < -0.5 || depth > 3) return { angle: null, depth: null, valid: false, hint: '', view: 'front', scale: width };
   const shoulderY = (L.s.y + R.s.y) / 2;
-  // Plank: both hands on the floor (level) below the shoulders, and the head not above the
-  // shoulders like when standing or sitting. Looking down (nose hidden) is fine.
   // Upright = standing/sitting. In a plank seen from the front the legs run away from the
   // phone, so the knees hide behind the body or sit near hip height (on real footage: knee
   // visibility ~0.1-0.3, knees <= ~0.3 shoulder widths below the hips, from low or raised
@@ -235,7 +236,8 @@ function frontPushup(lm: Landmark[], forced = false): Measurement | null {
   const legsShow = vis(L.h) >= 0.6 && vis(R.h) >= 0.6 && vis(L.k) >= 0.6 && vis(R.k) >= 0.6;
   const noseAbove = vis(nose) >= VIS ? (shoulderY - nose.y) / width : 0;
   const upright = legsShow ? (L.k.y + R.k.y - L.h.y - R.h.y) / 2 > 0.7 * width : noseAbove > 0.7;
-  // Hands below the shoulders (true all through a rep; the top is checked when a set starts).
+  // Plank: both hands on the floor (level) below the shoulders, not upright. True all through
+  // a rep; whether the arms were straight is checked when a set starts.
   const plank = arms.length === 2 && Math.abs(L.w.y - R.w.y) <= 0.35 * width && depth >= 0.1 && !upright;
   return { angle: angles ? angle / angles : null, depth, valid: true, hint: '', view: 'front', scale: width, hands, plank, gaps, upright };
 }
