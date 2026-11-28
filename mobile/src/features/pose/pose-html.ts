@@ -59,21 +59,26 @@ export const POSE_HTML = `<!doctype html>
     const u = Math.max(c.width, c.height) / 640;
     const sideScore = (ids) => ids.reduce((n, i) => n + vis(i), 0);
     const sides = LIMB[exercise] || LIMB.pushup;
-    const limb = sideScore(sides.left) >= sideScore(sides.right) ? sides.left : sides.right;
-    const inLimb = (a, b) => limb.includes(a) && limb.includes(b);
+    // From in front of the head both arms are in view: light up both.
+    const d = (a, b) => Math.hypot((lm[a].x - lm[b].x) * c.width, (lm[a].y - lm[b].y) * c.height);
+    const front = exercise === 'pushup' && ok(11) && ok(12) && d(11, 12) >= 0.7 * Math.max(d(11, 13), d(12, 14));
+    const limbs = front ? [sides.left, sides.right] : [sideScore(sides.left) >= sideScore(sides.right) ? sides.left : sides.right];
+    const inLimb = (a, b) => limbs.some((l) => l.includes(a) && l.includes(b));
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3 * u;
     for (const [a, b] of BODY) {
       if (inLimb(a, b) || !ok(a) || !ok(b)) continue;
       ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b)); ctx.stroke();
     }
-    if (!limb.every(ok)) return;
     const flash = performance.now() < flashUntil;
-    ctx.shadowColor = 'rgba(224,69,74,0.95)'; ctx.shadowBlur = (flash ? 34 : 18) * u;
-    ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F'; ctx.lineWidth = (flash ? 9 : 7) * u;
-    ctx.beginPath(); ctx.moveTo(...P(limb[0])); ctx.lineTo(...P(limb[1])); ctx.lineTo(...P(limb[2])); ctx.stroke();
-    ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
-    for (const i of limb) { const [x, y] = P(i); ctx.beginPath(); ctx.arc(x, y, 5 * u, 0, Math.PI * 2); ctx.fill(); }
+    for (const limb of limbs) {
+      if (!limb.every(ok)) continue;
+      ctx.shadowColor = 'rgba(224,69,74,0.95)'; ctx.shadowBlur = (flash ? 34 : 18) * u;
+      ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F'; ctx.lineWidth = (flash ? 9 : 7) * u;
+      ctx.beginPath(); ctx.moveTo(...P(limb[0])); ctx.lineTo(...P(limb[1])); ctx.lineTo(...P(limb[2])); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
+      for (const i of limb) { const [x, y] = P(i); ctx.beginPath(); ctx.arc(x, y, 5 * u, 0, Math.PI * 2); ctx.fill(); }
+    }
   }
   window.hagoSetExercise = (e) => { exercise = e; };
   window.hagoFlash = () => { flashUntil = performance.now() + 260; };

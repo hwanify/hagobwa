@@ -154,7 +154,7 @@ export default function PoseCamera({ exercise, onRep, autoStart = false, onStatu
           <Pressable accessibilityRole="button" onPress={start} disabled={status === 'loading'} style={styles.startBtn}>
             <T style={styles.startText}>{status === 'loading' ? '준비 중...' : '카메라로 세기'}</T>
           </Pressable>
-          <T style={styles.overlayNote}>{hint || '폰을 바닥에 세우고 몸 옆모습이 다 보이게 해주세요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
+          <T style={styles.overlayNote}>{hint || '폰을 바닥에 세우고, 옆이나 머리 쪽 정면에서 팔과 어깨가 다 보이게 해주세요. 무리하지 말고, 아프면 멈추세요. 영상은 저장하지 않아요.'}</T>
         </View>
       ) : (
         <View style={styles.bar}>

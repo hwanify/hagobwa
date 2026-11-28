@@ -206,7 +206,41 @@ function squatPose(kneeDeg: number): Landmark[] {
   return lm;
 }
 
+/**
+ * Push-up filmed from in front of the head: shoulders wide apart, they drop toward the hands
+ * (down = 0 top .. 1 bottom). Elbows stay nearly straight on screen, and the hidden hips/feet
+ * land in misleading places, as MediaPipe guesses them.
+ */
+function frontPushupPose(down: number): Landmark[] {
+  const lm = blank();
+  const set = (i: number, x: number, y: number) => (lm[i] = { x, y, visibility: 1 });
+  const sy = 0.3 + 0.26 * down;
+  for (const [s, e, w, h, k, a, x] of [
+    [11, 13, 15, 23, 25, 27, 0.4],
+    [12, 14, 16, 24, 26, 28, 0.6],
+  ]) {
+    set(s, x, sy);
+    set(e, x + (x < 0.5 ? -0.01 : 0.01), (sy + 0.62) / 2);
+    set(w, x, 0.62);
+    set(h, x, sy + 0.05);
+    set(k, x, sy + 0.08);
+    set(a, x, sy + 0.02);
+  }
+  return lm;
+}
+
 describe('pose measurement', () => {
+  it('recognises a front view and measures the shoulder drop', () => {
+    const top = measure(frontPushupPose(0), 'pushup');
+    const bottom = measure(frontPushupPose(1), 'pushup');
+    expect(top.view).toBe('front');
+    expect(top.valid).toBe(true);
+    expect(top.depth!).toBeGreaterThan(0.9);
+    expect(bottom.depth!).toBeLessThan(0.25);
+  });
+  it('keeps the side view for side-on push-ups', () => {
+    expect(measure(pushupPose(170), 'pushup').view).not.toBe('front');
+  });
   it('measures the elbow angle', () => {
     expect(measure(pushupPose(170), 'pushup').angle).toBeCloseTo(170, 0);
     expect(measure(pushupPose(80), 'pushup').angle).toBeCloseTo(80, 0);
@@ -293,6 +327,23 @@ describe('RepCounter', () => {
     for (let i = 0; i < 60; i++) keys.push(i % 2 ? 168 : 160 + (i % 5));
     play(c, pushupPose, keys, 200);
     expect(c.reps).toBe(0);
+  });
+
+  it('counts push-ups filmed from in front of the head', () => {
+    const c = new RepCounter('pushup');
+    const keys = [0];
+    for (let i = 0; i < 5; i++) keys.push(1, 0);
+    keys.push(0);
+    play(c, (d) => frontPushupPose(d / 100), keys.map((k) => k * 100), 700);
+    expect(c.reps).toBe(5);
+  });
+
+  it('does not count shallow dips from the front', () => {
+    const c = new RepCounter('pushup');
+    const keys = [0, 1, 0];
+    for (let i = 0; i < 4; i++) keys.push(0.35, 0);
+    play(c, (d) => frontPushupPose(d / 100), keys.map((k) => k * 100), 700);
+    expect(c.reps).toBe(1);
   });
 
   it('counts squats by knee angle', () => {

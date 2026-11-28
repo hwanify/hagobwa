@@ -193,36 +193,41 @@ function draw(
   const P = (i: number): [number, number] => [lm[i].x * W, lm[i].y * H];
   const score = (ids: number[]) => ids.reduce((n, i) => n + vis(i), 0);
   const sides = LIMB[exercise];
-  const limb = score(sides.left) >= score(sides.right) ? sides.left : sides.right;
+  // From in front of the head both arms are in view: light up both.
+  const d = (a: number, b: number) => Math.hypot((lm[a].x - lm[b].x) * W, (lm[a].y - lm[b].y) * H);
+  const front = exercise === 'pushup' && ok(11) && ok(12) && d(11, 12) >= 0.7 * Math.max(d(11, 13), d(12, 14));
+  const limbs = front ? [sides.left, sides.right] : [score(sides.left) >= score(sides.right) ? sides.left : sides.right];
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.shadowBlur = 0;
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 3 * u;
   for (const [a, b] of BODY) {
-    if ((limb.includes(a) && limb.includes(b)) || !ok(a) || !ok(b)) continue;
+    if (limbs.some((l) => l.includes(a) && l.includes(b)) || !ok(a) || !ok(b)) continue;
     ctx.beginPath();
     ctx.moveTo(...P(a));
     ctx.lineTo(...P(b));
     ctx.stroke();
   }
-  if (!limb.every(ok)) return;
-  ctx.shadowColor = 'rgba(224,69,74,0.95)';
-  ctx.shadowBlur = (flash ? 34 : 18) * u;
-  ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F';
-  ctx.lineWidth = (flash ? 9 : 7) * u;
-  ctx.beginPath();
-  ctx.moveTo(...P(limb[0]));
-  ctx.lineTo(...P(limb[1]));
-  ctx.lineTo(...P(limb[2]));
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#fff';
-  for (const i of limb) {
-    const [x, y] = P(i);
+  for (const limb of limbs) {
+    if (!limb.every(ok)) continue;
+    ctx.shadowColor = 'rgba(224,69,74,0.95)';
+    ctx.shadowBlur = (flash ? 34 : 18) * u;
+    ctx.strokeStyle = flash ? '#FF8A8D' : '#FF5A5F';
+    ctx.lineWidth = (flash ? 9 : 7) * u;
     ctx.beginPath();
-    ctx.arc(x, y, 5 * u, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(...P(limb[0]));
+    ctx.lineTo(...P(limb[1]));
+    ctx.lineTo(...P(limb[2]));
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    for (const i of limb) {
+      const [x, y] = P(i);
+      ctx.beginPath();
+      ctx.arc(x, y, 5 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 

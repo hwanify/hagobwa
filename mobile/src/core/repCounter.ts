@@ -22,6 +22,11 @@ export interface Measurement {
   depth: number | null;
   /** false when the body is visible but form is bad (e.g. sagging hips). */
   valid: boolean;
+  /**
+   * 'front': phone in front of the head (both shoulders wide apart on screen). The elbow
+   * angle barely changes from there, so reps are counted from how far the shoulders drop.
+   */
+  view?: 'side' | 'front';
   hint: '' | 'show-arms' | 'show-legs' | 'straighten' | 'no-person';
 }
 
@@ -102,6 +107,8 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
   const d = joints(lm, side ?? bestSide(lm, exercise));
 
   if (exercise === 'pushup') {
+    const front = frontPushup(lm);
+    if (front) return front;
     if (vis(d.s) < VIS || vis(d.e) < VIS || vis(d.w) < VIS) {
       return { angle: null, depth: null, valid: false, hint: 'show-arms' };
     }
@@ -121,6 +128,29 @@ export function measure(lm: Landmark[] | undefined, exercise: ExerciseId, side?:
   const leg = dist(d.h, d.k) + dist(d.k, d.a);
   const depth = leg > 0 ? (d.a.y - d.h.y) / leg : null;
   return { angle: angleAt(d.h, d.k, d.a), depth, valid: true, hint: '' };
+}
+
+/** Shoulder width counts as "wide" (camera in front) at this fraction of the upper arm. */
+const FRONT_SHOULDER_RATIO = 0.7;
+
+/**
+ * Push-up seen from in front of the head. Shoulder width is the ruler here: it stays the
+ * same size on screen while the shoulders drop toward the hands. Depth is ~1 at the top and
+ * ~0.2 at the bottom. Hips and feet are hidden behind the body from here, so the hip check
+ * is skipped.
+ */
+function frontPushup(lm: Landmark[]): Measurement | null {
+  const L = joints(lm, 'left');
+  const R = joints(lm, 'right');
+  if (vis(L.s) < VIS || vis(R.s) < VIS) return null;
+  const width = dist(L.s, R.s);
+  const upper = Math.max(vis(L.e) >= VIS ? dist(L.s, L.e) : 0, vis(R.e) >= VIS ? dist(R.s, R.e) : 0);
+  if (upper === 0 || width < FRONT_SHOULDER_RATIO * upper) return null;
+  const arms = [L, R].filter((a) => vis(a.e) >= VIS && vis(a.w) >= VIS);
+  if (arms.length === 0) return { angle: null, depth: null, valid: false, hint: 'show-arms', view: 'front' };
+  const angle = arms.reduce((n, a) => n + angleAt(a.s, a.e, a.w), 0) / arms.length;
+  const drop = arms.reduce((n, a) => n + (a.w.y - a.s.y), 0) / arms.length;
+  return { angle, depth: drop / (1.6 * width), valid: true, hint: '', view: 'front' };
 }
 
 /**
@@ -306,8 +336,11 @@ export class RepCounter {
         this.depthRange.update(depth, nowMs, dt);
         this.depthSpan.min = Math.min(this.depthSpan.min, depth);
         this.depthSpan.max = Math.max(this.depthSpan.max, depth);
-        // Only trust depth once it has actually moved like a rep; then average both signals.
-        if (this.depthSpan.max - this.depthSpan.min >= MIN_DEPTH_RANGE) {
+        if (m.view === 'front') {
+          // From the front the elbow angle hardly moves: count on the shoulder drop alone.
+          progress = this.depthRange.progress(depth);
+        } else if (this.depthSpan.max - this.depthSpan.min >= MIN_DEPTH_RANGE) {
+          // Only trust depth once it has actually moved like a rep; then average both signals.
           progress = (progress + this.depthRange.progress(depth)) / 2;
         }
       }
